@@ -53,9 +53,9 @@ def dealout_deck():
 
 try:
     with open( 'raffle.json', 'r' ) as f:
-        decks = json.load(f)
+        decks = json.load(f)['decks']
 except:
-    decks = json.loads('{}')
+    decks = json.loads('[{}]')
 
 print(decks)
 
