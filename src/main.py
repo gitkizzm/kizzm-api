@@ -28,8 +28,8 @@ def get_deck(  d_id: int ):
     return deck[0] if len(deck) > 0 else {}
 
 @app.get( '/addDeck', status_code=201 )
-def add_deck( d_id: int = Query( None, title='Deck ID', description='The Deckid from QR-Code' ),
-              creator: str = Query( None, title='Deck creator name', description='The name of the creator of the submitted deck' ) ):
+def add_deck( d_id: int = Query( None, title='DID', description='The Deckid from QR-Code' ),
+              creator: str = Query( None, title='DCN', description='The name of the creator of the submitted deck' ) ):
     # add a deck to the database via link in QR Code
     new_deck = {
             "id": d_id,
