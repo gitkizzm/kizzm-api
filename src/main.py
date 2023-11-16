@@ -22,12 +22,12 @@ class Deck(BaseModel):
     owner: Optional[int] = ''
     dealtOut: bool = False
 
-@app.post( '/addDeck', status_code=201 )
-def add_deck(deck:Deck):
+@app.get( '/addDeck/{d_id}/{creator}', status_code=200 )
+def add_deck( d_id, creator ):
     # add a deck to the database via link in QR Code
     new_deck = {
-            "id": deck.creator,
-            "creator": deck.creator,
+            "id": d_id,
+            "creator": creator,
             "owner": "",
             "dealtOut": False
         }
