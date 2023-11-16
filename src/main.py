@@ -25,12 +25,8 @@ class Deck(BaseModel):
 @app.post( '/addDeck', status_code=201 )
 def add_deck(deck:Deck):
     # add a deck to the database via link in QR Code
-    try:
-        d_id = max([ d['id'] for d in decks] + 1)
-    except:
-        d_id = 1
     new_deck = {
-            "id": d_id,
+            "id": deck.creator,
             "creator": deck.creator,
             "owner": "",
             "dealtOut": False
@@ -49,10 +45,13 @@ def start_raffle():
 def dealout_deck():
     pass
 
-with open( 'raffle.json', 'r' ) as f:
-    decks = json.load(f)
+try:
+    with open( 'raffle.json', 'r' ) as f:
+        decks = json.load(f)
+except:
+    decks = json.loads('{}')
 
 print(decks)
 
 if __name__ == "__main__":
-    uvicorn.run(app, port=8000, host="0.0.0.0")
+    uvicorn.run(app, port=8080, host="0.0.0.0")
