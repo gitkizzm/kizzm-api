@@ -42,7 +42,7 @@ def add_deck( d_id: int = Query( None, title='DID', description='The Deckid from
     with open( 'raffle.json', 'w' ) as f:
         json.dump( decks, f )
         
-    print( new_deck )
+    return new_deck
 
 def start_raffle():
     # manually starts the raffle, this stops registration access and shuffles
