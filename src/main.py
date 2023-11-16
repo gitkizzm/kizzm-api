@@ -17,6 +17,10 @@ app = FastAPI()
 def central_function():
     return{ "eins":"1" }
 
+@app.get("/hello")
+def hello_function():
+    return{ "hello":"world!" }
+
 
 if __name__ == "__main__":
     uvicorn.run(app, port=8000, host="0.0.0.0")
