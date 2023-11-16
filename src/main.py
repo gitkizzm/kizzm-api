@@ -22,10 +22,23 @@ class Deck(BaseModel):
     owner: Optional[int] = ''
     dealtOut: bool = False
 
-@app.get( '/deck/{d_id}', status_code=200 )    
-def get_deck(  d_id: int ):
-    deck = [ d for d in decks if d['id'] == d_id ]
-    return deck[0] if len(deck) > 0 else {}
+@app.get( '/find', status_code=200 )    
+def find_deck(  d_id: Optional[int] = Query( None, title='DID', description='The Deckid from QR-Code' ),
+                creator: Optional[str] = Query( None, title='DCN', description='The name of the creator of the submitted deck' ),
+                owner: Optional[str] = Query( None, title='DON', description='The name of the new owner of the submitted deck' ),
+                dealtOut: Optional[bool] = Query( None, title='OUT', description='Status, if the deck is assigned a new owner' ),
+                ):
+    tmp_decks = decks
+    if d_id:
+        tmp_decks = [ d for d in tmp_decks if d['id'] == d_id ]
+    if creator:
+        tmp_decks = [ d for d in tmp_decks if d['creator'] == creator ]
+    if owner:
+        tmp_decks = [ d for d in tmp_decks if d['owner'] == owner ]
+    if dealtOut:
+        tmp_decks = [ d for d in tmp_decks if d['id'] == dealtOut ]
+    
+    return tmp_decks
 
 @app.get( '/addDeck', status_code=201 )
 def add_deck( d_id: int = Query( None, title='DID', description='The Deckid from QR-Code' ),
@@ -55,9 +68,7 @@ try:
     with open( 'raffle.json', 'r' ) as f:
         decks = json.load(f)['decks']
 except:
-    decks = json.loads('[{}]')
-
-print(decks)
+    decks = json.loads('[]')
 
 if __name__ == "__main__":
     uvicorn.run(app, port=8000, host="0.0.0.0")
