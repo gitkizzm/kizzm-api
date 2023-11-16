@@ -9,7 +9,7 @@ https://www.back4app.com/docs-containers/deployment-process
 """
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 from pydantic import BaseModel
 from typing import Optional
 import json
@@ -22,8 +22,14 @@ class Deck(BaseModel):
     owner: Optional[int] = ''
     dealtOut: bool = False
 
-@app.get( '/addDeck/{d_id}/{creator}', status_code=200 )
-def add_deck( d_id, creator ):
+@app.get( '/deck/{d_id}', status_code=200 )    
+def get_deck(  d_id: int ):
+    deck = [ d for d in decks if d['id'] == d_id ]
+    return deck[0] if len(deck) > 0 else {}
+
+@app.get( '/addDeck', status_code=201 )
+def add_deck( d_id: int = Query( None, title='Deck ID', description='The Deckid from QR-Code' ),
+              creator: str = Query( None, title='Deck creator name', description='The name of the creator of the submitted deck' ) ):
     # add a deck to the database via link in QR Code
     new_deck = {
             "id": d_id,
