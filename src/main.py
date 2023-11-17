@@ -61,12 +61,13 @@ def find_deck(  d_id: Optional[int] = Query( None, title='DID', description='The
 
 @app.get( '/addAll', status_code=201 )
 def add_deck1():
-    add_deck( 1, 'Basti' )
+    add_deck( 1, 'Julian Dürr' )
     add_deck( 2, 'Steven' )
     add_deck( 3, 'Sidney' )
     add_deck( 4, 'Julien' )
     add_deck( 5, 'Daniel' )
-    return "5 Decks Added!"
+    add_deck( 6, 'Basti' )
+    return "6 Decks Added!"
     
 
 @app.get( '/addDeck', status_code=201 )
@@ -86,10 +87,10 @@ def add_deck( d_id: int = Query( None, title='DID', description='The Deckid from
         return "hat geklappt"
 
 def shuffle_decks(decks):
-    playerIDX = decks.index.values.tolist()
-    playerIDX.remove(0)
-    creatorOrder = playerIDX
-    giftOrder = playerIDX
+    creatorOrder = decks.index.values.tolist()
+    giftOrder = decks.index.values.tolist()
+    creatorOrder.remove(0)
+    giftOrder.remove(0)    
     shuffle( creatorOrder )
     shuffle( giftOrder )
     if sum( [ 0 if (i-j) else 1 for i,j in zip(giftOrder, creatorOrder)  ] ):
