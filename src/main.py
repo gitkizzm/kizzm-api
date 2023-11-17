@@ -10,11 +10,9 @@ https://www.back4app.com/docs-containers/deployment-process
 
 import uvicorn
 from fastapi import FastAPI, Query
-# from pydantic import BaseModel
 from typing import Optional
 from random import shuffle
-from pandas import DataFrame, read_json, concat
-# import json
+from pandas import DataFrame, read_json
 
 app = FastAPI()
 
@@ -27,22 +25,15 @@ def clear_json():
                                } ] )
     new_deck = new_deck.set_index( 'id' )
     new_deck.to_json( 'raffle.json' )
-    return "Raffle restarted. All Data cleared!"
+    return "Commander Secret Santa restarted. All Data cleared!"
     
 @app.get( '/status', status_code=200 )
 def get_status():
     decks = read_json( 'raffle.json' )
     if decks.at[0,'dealtOut']:
-        return "Raffle is rdy to start!"
+        return "Commander Secret Santa is rdy to start! {len(decks)-1} are in the giftpool."
     else:
-        return f"Registration is still ongoing. {len(decks)-1} have been registered yet."
-    # registered deck count anzeigen!!!!
-
-# class Deck(BaseModel):
-#     id: int
-#     creator: str
-#     owner: Optional[int] = ''
-#     dealtOut: bool = False
+        return f"Registration is still ongoing. {len(decks)-1} decks have been registered yet."
 
 @app.get( '/find', status_code=200 )    
 def find_deck(  d_id: Optional[int] = Query( None, title='DID', description='The Deckid from QR-Code' ),
@@ -56,11 +47,11 @@ def find_deck(  d_id: Optional[int] = Query( None, title='DID', description='The
         tmp_decks = tmp_decks[ tmp_decks['creator'].isin( [ creator ] ) ]
     if owner:
         tmp_decks = tmp_decks[ tmp_decks['owner'].isin( [ owner ] ) ]
-    
+    print(tmp_decks)
     return tmp_decks.to_string()
 
 @app.get( '/addAll', status_code=201 )
-def add_deck1():
+def add_all():
     add_deck( 1, 'Julian Dürr' )
     add_deck( 2, 'Steven' )
     add_deck( 3, 'Sidney' )
@@ -69,7 +60,6 @@ def add_deck1():
     add_deck( 6, 'Basti' )
     return "6 Decks Added!"
     
-
 @app.get( '/addDeck', status_code=201 )
 def add_deck( d_id: int = Query( None, title='DID', description='The Deckid from QR-Code' ),
               creator: str = Query( None, title='DCN', description='The name of the creator of the submitted deck' ) ):
@@ -84,7 +74,7 @@ def add_deck( d_id: int = Query( None, title='DID', description='The Deckid from
         decks.at[ d_id, "owner" ] = ""
         decks.at[ d_id, "dealtOut" ] = False
         decks.to_json( 'raffle.json' )
-        return "hat geklappt"
+        return "Thanks {creator}, your deck is now in the gift pool!"
 
 def shuffle_decks(decks):
     creatorOrder = decks.index.values.tolist()
@@ -116,13 +106,12 @@ def start_raffle():
 def dealout_deck( d_id: int = Query( None, title='DID', description='The Deckid from QR-Code' ) ):
     decks = read_json( 'raffle.json' )
     if not decks.at[0,'dealtOut']:
-        return "Not all Decks yet Registred! Please wait until the Raffle starts."
+        return "Not all Decks yet Registred! Please wait until the Commander Secret Santa starts."
     else:
         decks.at[d_id,'dealtOut'] = True
         decks.to_json( 'raffle.json' )
         name = decks.at[d_id,'owner']
         return f"Please hand this deck over to {name}!"
-
 
 if __name__ == "__main__":
     new_deck = DataFrame( [ { "id": 0,
