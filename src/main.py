@@ -86,8 +86,10 @@ def add_deck( d_id: int = Query( None, title='DID', description='The Deckid from
         return "hat geklappt"
 
 def shuffle_decks(decks):
-    creatorOrder = decks.index.values.tolist()
-    giftOrder = decks.index.values.tolist()
+    playerIDX = decks.index.values.tolist()
+    playerIDX.remove(0)
+    creatorOrder = playerIDX
+    giftOrder = playerIDX
     shuffle( creatorOrder )
     shuffle( giftOrder )
     if sum( [ 0 if (i-j) else 1 for i,j in zip(giftOrder, creatorOrder)  ] ):
@@ -115,7 +117,8 @@ def dealout_deck( d_id: int = Query( None, title='DID', description='The Deckid 
     else:
         decks.at[d_id,'dealtOut'] = True
         decks.to_json( 'raffle.json' )
-        return f"Please hand this deck over to {decks.at[d_id,'owner']}!"
+        name = decks.at[d_id,'owner']
+        return f"Please hand this deck over to {name}!"
 
 
 if __name__ == "__main__":
