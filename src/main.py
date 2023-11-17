@@ -18,26 +18,24 @@ from pandas import DataFrame, read_json, concat
 
 app = FastAPI()
 
+global raffleRdy
 raffleRdy = False
 
 @app.get( '/restart', status_code=200 )
 def clear_json():
-    raffleRdy = False
+    decks = read_json( 'raffle.json' )
+    decks.at[0,'dealtOut']
     decks = DataFrame()
     decks.to_json( 'raffle.json' )
     return decks
-
-try:
-    decks = read_json( 'raffle.json' )
-except:
-    decks = clear_json()
     
 @app.get( '/status', status_code=200 )
 def get_status():
-    if raffleRdy:
-        return f"Raffle is rdy to start!\n {decks.loc[:,'dealtOut'].sum()} have been handed out to ther new onwer."
+    decks = read_json( 'raffle.json' )
+    if decks.at[0,'dealtOut']:
+        return "Raffle is rdy to start!\n {} have been handed out to ther new onwer.".format( decks.loc[:,'dealtOut'].sum() )
     else:
-        return "Registration is still ongoing. {len(decks)} have been registered yet."
+        return f"Registration is still ongoing. {len(decks)} have been registered yet."
     # registered deck count anzeigen!!!!
 
 # class Deck(BaseModel):
@@ -53,14 +51,14 @@ def find_deck(  d_id: Optional[int] = Query( None, title='DID', description='The
                 dealtOut: Optional[bool] = Query( None, title='OUT', description='Status, if the deck is assigned a new owner' ),
                 ):
     tmp_decks = decks
-    if d_id:
-        tmp_decks = [ d for d in tmp_decks if d['id'] == d_id ]
-    if creator:
-        tmp_decks = [ d for d in tmp_decks if d['creator'] == creator ]
-    if owner:
-        tmp_decks = [ d for d in tmp_decks if d['owner'] == owner ]
-    if dealtOut:
-        tmp_decks = [ d for d in tmp_decks if d['id'] == dealtOut ]
+    # if d_id:
+    #     tmp_decks = [ d for d in tmp_decks if d['id'] == d_id ]
+    # if creator:
+    #     tmp_decks = [ d for d in tmp_decks if d['creator'] == creator ]
+    # if owner:
+    #     tmp_decks = [ d for d in tmp_decks if d['owner'] == owner ]
+    # if dealtOut:
+    #     tmp_decks = [ d for d in tmp_decks if d['id'] == dealtOut ]
     
     return tmp_decks
 
@@ -68,6 +66,7 @@ def find_deck(  d_id: Optional[int] = Query( None, title='DID', description='The
 def add_deck( d_id: int = Query( None, title='DID', description='The Deckid from QR-Code' ),
               creator: str = Query( None, title='DCN', description='The name of the creator of the submitted deck' ) ):
     # add a deck to the database via link in QR Code
+    decks = read_json( 'raffle.json' )
     if raffleRdy:
         return "Registration closed. Decks get dealtout now!"
     if d_id in decks.index.values:
@@ -83,7 +82,7 @@ def add_deck( d_id: int = Query( None, title='DID', description='The Deckid from
         decks.to_json( 'raffle.json' )
         return new_deck
 
-def shuffle_decks():
+def shuffle_decks(decks):
     creatorOrder = decks.index.values.tolist()
     giftOrder = decks.index.values.tolist()
     shuffle( creatorOrder )
@@ -96,18 +95,23 @@ def shuffle_decks():
 @app.get( '/start', status_code=200 )
 def start_raffle():
     # manually starts the raffle, this stops registration access and shuffles
-    raffleRdy = True
+    decks = read_json( 'raffle.json' )
+    decks.at[0,'dealtOut'] = True #newRaffleRdy Bool
     gOrder, cOrder = shuffle_decks( len(decks) )
     
     for gifted, gifter in zip( gOrder, cOrder ):
         decks.at[ gifter, 'owner' ] = gifted
+    decks.to_json( 'raffle.json' )
+    return get_status() 
                 
 @app.get( '/deal', status_code=201 )
 def dealout_deck( d_id: int = Query( None, title='DID', description='The Deckid from QR-Code' ) ):
+    decks = read_json( 'raffle.json' )
     if not raffleRdy:
         return "Not all Decks yet Registred! Please wait until the Raffle starts."
     else:
         decks.at[d_id,'dealtOut'] = True
+        decks.to_json( 'raffle.json' )
         return f"Please hand this deck over to {decks.at[d_id,'owner']}!"
 
 
