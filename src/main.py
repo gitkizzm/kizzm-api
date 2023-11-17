@@ -90,11 +90,13 @@ def shuffle_decks(decks):
     creatorOrder = decks.index.values.tolist()
     giftOrder = decks.index.values.tolist()
     creatorOrder.remove(0)
-    giftOrder.remove(0)    
-    shuffle( creatorOrder )
-    shuffle( giftOrder )
-    if sum( [ 0 if (i-j) else 1 for i,j in zip(giftOrder, creatorOrder)  ] ):
-        giftOrder, creatorOrder = shuffle_decks( decks )
+    giftOrder.remove(0)
+    shuffleCount = 0
+    while sum( [ 0 if (i-j) else 1 for i,j in zip(giftOrder, creatorOrder)  ] ):
+        shuffle( creatorOrder )
+        shuffle( giftOrder )
+        shuffleCount+=1
+        print('Shuffle Count is {}'.format( shuffleCount ))
     else:
         return giftOrder, creatorOrder
     
