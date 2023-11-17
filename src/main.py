@@ -50,15 +50,15 @@ def find_deck(  d_id: Optional[int] = Query( None, title='DID', description='The
                 owner: Optional[str] = Query( None, title='DON', description='The name of the new owner of the submitted deck' ),
                 dealtOut: Optional[bool] = Query( None, title='OUT', description='Status, if the deck is assigned a new owner' ),
                 ):
-    tmp_decks = decks
-    # if d_id:
-    #     tmp_decks = [ d for d in tmp_decks if d['id'] == d_id ]
-    # if creator:
-    #     tmp_decks = [ d for d in tmp_decks if d['creator'] == creator ]
-    # if owner:
-    #     tmp_decks = [ d for d in tmp_decks if d['owner'] == owner ]
-    # if dealtOut:
-    #     tmp_decks = [ d for d in tmp_decks if d['id'] == dealtOut ]
+    tmp_decks = read_json( 'raffle.json' )
+    if d_id:
+        tmp_decks = tmp_decks[ tmp_decks.index.isin( [ d_id ] ) ]
+    if creator:
+        tmp_decks = tmp_decks['creator'].isin( [ creator ] )
+    if owner:
+        tmp_decks = tmp_decks['owner'].isin( [ owner ] )
+    if dealtOut:
+        tmp_decks = tmp_decks[ tmp_decks['dealtOut']==bool( dealtOut ) ]
     
     return tmp_decks
 
