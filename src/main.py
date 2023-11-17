@@ -10,17 +10,41 @@ https://www.back4app.com/docs-containers/deployment-process
 
 import uvicorn
 from fastapi import FastAPI, Query
-from pydantic import BaseModel
+# from pydantic import BaseModel
 from typing import Optional
-import json
+from random import shuffle
+from pandas import DataFrame, read_json, concat
+# import json
 
 app = FastAPI()
 
-class Deck(BaseModel):
-    id: int
-    creator: str
-    owner: Optional[int] = ''
-    dealtOut: bool = False
+raffleRdy = False
+
+@app.get( '/restart', status_code=200 )
+def clear_json():
+    raffleRdy = False
+    decks = DataFrame()
+    decks.to_json( 'raffle.json' )
+    return decks
+
+try:
+    decks = read_json( 'raffle.json' )
+except:
+    decks = clear_json()
+    
+@app.get( '/status', status_code=200 )
+def get_status():
+    if raffleRdy:
+        return f"Raffle is rdy to start!\n {decks.loc[:,'dealtOut'].sum()} have been handed out to ther new onwer."
+    else:
+        return "Registration is still ongoing. {len(decks)} have been registered yet."
+    # registered deck count anzeigen!!!!
+
+# class Deck(BaseModel):
+#     id: int
+#     creator: str
+#     owner: Optional[int] = ''
+#     dealtOut: bool = False
 
 @app.get( '/find', status_code=200 )    
 def find_deck(  d_id: Optional[int] = Query( None, title='DID', description='The Deckid from QR-Code' ),
@@ -44,31 +68,48 @@ def find_deck(  d_id: Optional[int] = Query( None, title='DID', description='The
 def add_deck( d_id: int = Query( None, title='DID', description='The Deckid from QR-Code' ),
               creator: str = Query( None, title='DCN', description='The name of the creator of the submitted deck' ) ):
     # add a deck to the database via link in QR Code
-    new_deck = {
-            "id": d_id,
-            "creator": creator,
-            "owner": "",
-            "dealtOut": False
-        }
-    decks.append( new_deck )
-    
-    with open( 'raffle.json', 'w' ) as f:
-        json.dump( decks, f )
-        
-    return new_deck
+    if raffleRdy:
+        return "Registration closed. Decks get dealtout now!"
+    if d_id in decks.index.values:
+        return "This deck is already registred!"
+    else:
+        new_deck = DataFrame( [ { "id": d_id,
+                                   "creator": creator,
+                                   "owner": "",
+                                   "dealtOut": False
+                                   } ] )
+        new_deck = new_deck.set_index( 'id' )
+        decks = concat( [decks, new_deck] )
+        decks.to_json( 'raffle.json' )
+        return new_deck
 
+def shuffle_decks():
+    creatorOrder = decks.index.values.tolist()
+    giftOrder = decks.index.values.tolist()
+    shuffle( creatorOrder )
+    shuffle( giftOrder )
+    if sum( [ 0 if (i-j) else 1 for i,j in zip(giftOrder, creatorOrder)  ] ):
+        giftOrder, creatorOrder = shuffle_decks()
+    else:
+        return giftOrder, creatorOrder
+    
+@app.get( '/start', status_code=200 )
 def start_raffle():
     # manually starts the raffle, this stops registration access and shuffles
-    pass
+    raffleRdy = True
+    gOrder, cOrder = shuffle_decks( len(decks) )
+    
+    for gifted, gifter in zip( gOrder, cOrder ):
+        decks.at[ gifter, 'owner' ] = gifted
+                
+@app.get( '/deal', status_code=201 )
+def dealout_deck( d_id: int = Query( None, title='DID', description='The Deckid from QR-Code' ) ):
+    if not raffleRdy:
+        return "Not all Decks yet Registred! Please wait until the Raffle starts."
+    else:
+        decks.at[d_id,'dealtOut'] = True
+        return f"Please hand this deck over to {decks.at[d_id,'owner']}!"
 
-def dealout_deck():
-    pass
-
-try:
-    with open( 'raffle.json', 'r' ) as f:
-        decks = json.load(f)['decks']
-except:
-    decks = json.loads('[]')
 
 if __name__ == "__main__":
     uvicorn.run(app, port=8000, host="0.0.0.0")
