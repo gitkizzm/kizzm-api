@@ -31,7 +31,7 @@ def clear_json():
 def get_status():
     decks = read_json( 'raffle.json' )
     if decks.at[0,'dealtOut']:
-        return "Commander Secret Santa is rdy to start! {len(decks)-1} are in the giftpool."
+        return f"Commander Secret Santa is rdy to start! {len(decks)-1} are in the giftpool."
     else:
         return f"Registration is still ongoing. {len(decks)-1} decks have been registered yet."
 
@@ -74,7 +74,7 @@ def add_deck( d_id: int = Query( None, title='DID', description='The Deckid from
         decks.at[ d_id, "owner" ] = ""
         decks.at[ d_id, "dealtOut" ] = False
         decks.to_json( 'raffle.json' )
-        return "Thanks {creator}, your deck is now in the gift pool!"
+        return f"Thanks {creator}, your deck is now in the gift pool!"
 
 def shuffle_decks(decks):
     creatorOrder = decks.index.values.tolist()
