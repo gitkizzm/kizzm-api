@@ -20,12 +20,16 @@ from fastapi.templating import Jinja2Templates
 from schemas import AwesomeForm
 from typing import Optional
 from random import shuffle
-from pandas import DataFrame, read_json
+from pandas import DataFrame, read_jsonimport os
+
 
 app = FastAPI()
 
 templates = Jinja2Templates(directory="templates")
-app.mount("/static", StaticFiles(directory="static"), name="static")
+
+script_dir = os.path.dirname(__file__)
+st_abs_file_path = os.path.join(script_dir, "static/")
+app.mount("/static", StaticFiles(directory=st_abs_file_path), name="static")
 
 @app.get('/basic', response_class=HTMLResponse)
 def get_basic_form(request: Request):
