@@ -9,12 +9,28 @@ https://www.back4app.com/docs-containers/deployment-process
 """
 
 import uvicorn
-from fastapi import FastAPI, Query
+from fastapi import FastAPI, Query, Request, Form
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 from typing import Optional
 from random import shuffle
 from pandas import DataFrame, read_json
 
 app = FastAPI()
+
+templates = Jinja2Templates(directory="templates")
+app.mount("/static", StaticFiles(driectory="static"), name="static")
+
+@app.get('/basic', response_class=HTMLResponse)
+def get_basic_form(request: Request):
+    return templates.TemplateResponse("basic_form.html", {"request": request})
+    
+@app.post('/basic', repsonse_class=HTMLResponse)
+def post_basic_form(request: Request, username: str = Form(...), password: str = Form(...)):
+    print(f'username: {username}')
+    print(f'password: {password}')
+    return templates.TemplateResponse("basic-form.html", {"request": request})
 
 @app.get( '/restart', status_code=200 )
 def clear_json():
