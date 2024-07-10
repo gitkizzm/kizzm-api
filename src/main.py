@@ -24,6 +24,21 @@ from pandas import DataFrame, read_json
 
 app = FastAPI()
 
+templates = Jinja2Templates(directory="templates")
+app.mount("/static", StaticFiles(directory="static"), name="static")
+
+@app.get('/basic', response_class=HTMLResponse)
+def get_basic_form(request: Request):
+    return templates.TemplateResponse("basic-form.html", {"request": request})
+
+@app.post('/basic', response_class=HTMLResponse)
+async def post_basic_form(request: Request, username: str = Form(...), password: str = Form(...), file: UploadFile = File(...)):
+    print(f'username: {username}')
+    print(f'password: {password}')
+    content = await file.read()
+    print(content)
+    return templates.TemplateResponse("basic-form.html", {"request": request})
+
 @app.get( '/restart', status_code=200 )
 def clear_json():
     new_deck = DataFrame( [ { "id": 0,
