@@ -2,3 +2,14 @@ uvicorn
 fastapi
 pydantic
 pandas
+aiofiles
+asgiref
+click
+h11
+Jinja2
+MarkupSafe
+pydantic
+python-multipart
+six
+starlette
+typing-extensions
