@@ -13,11 +13,14 @@ form tinkering
 """
 
 import uvicorn
-from fastapi import FastAPI, Request, Form, Depends, UploadFile, File
+from fastapi import FastAPI, Request, Form, Depends, UploadFile, File, Query
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from schemas import AwesomeForm
+from typing import Optional
+from random import shuffle
+from pandas import DataFrame, read_json
 
 app = FastAPI()
 
