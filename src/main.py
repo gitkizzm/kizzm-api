@@ -46,6 +46,15 @@ async def post_basic_form(request: Request, username: str = Form(...), password:
     print(content)
     return templates.TemplateResponse("basic-form.html", {"request": request})
 
+@app.get('/awesome', response_class=HTMLResponse)
+def get_form(request: Request):
+    return templates.TemplateResponse("awesome-form.html", {"request": request})
+
+@app.post('/awesome', response_class=HTMLResponse)
+def post_form(request: Request, form_data: AwesomeForm = Depends(AwesomeForm.as_form)):
+    print(form_data)
+    return templates.TemplateResponse("awesome-form.html", {"request": request})
+
 @app.get( '/restart', status_code=200 )
 def clear_json():
     new_deck = DataFrame( [ { "id": 0,
