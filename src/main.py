@@ -20,7 +20,8 @@ from fastapi.templating import Jinja2Templates
 from schemas import AwesomeForm
 from typing import Optional
 from random import shuffle
-from pandas import DataFrame, read_jsonimport os
+from pandas import DataFrame, read_json
+import os
 
 
 app = FastAPI()
