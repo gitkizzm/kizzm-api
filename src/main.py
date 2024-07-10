@@ -6,13 +6,18 @@ Created on Wed Nov 15 22:14:26 2023
 
 https://www.youtube.com/watch?v=0TFWtfFY87U
 https://www.back4app.com/docs-containers/deployment-process
+
+form tinkering
+    https://github.com/itsthatianguy/youtube/blob/main/fastapi-forms-file-upload/app.py
+    https://www.youtube.com/watch?v=L4WBFRQB7Lk
 """
 
 import uvicorn
-from fastapi import FastAPI, Query
-from typing import Optional
-from random import shuffle
-from pandas import DataFrame, read_json
+from fastapi import FastAPI, Request, Form, Depends, UploadFile, File
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from schemas import AwesomeForm
 
 app = FastAPI()
 
