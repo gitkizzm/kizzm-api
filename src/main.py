@@ -90,7 +90,7 @@ def find_deck(  d_id: Optional[int] = Query( None, title='DID', description='The
     return tmp_decks.to_string()
 
 @app.get( '/addAll', status_code=201 )
-def add_all():
+async def add_all( request: Request):
     add_deck( 1, 'Julian Dürr' )
     add_deck( 2, 'Steven' )
     add_deck( 3, 'Sidney' )
@@ -98,7 +98,7 @@ def add_all():
     add_deck( 5, 'Daniel' )
     add_deck( 6, 'Basti' )
     # return "6 Decks Added!"
-    return HTMLResponse( content=os.path.join(tmplt_abs_file_path, "thanks.html"), status_code=201 )
+    return templates.TemplateResponse( "thanks.html", {"request": request} )
     
 #@app.post( '/thanks', response_class=HTMLResponse )
 #def get_thanks(request: Request):
