@@ -78,7 +78,7 @@ def clear_json( request: Request ):
     context = { 'request': request, 'response': response }
     return templates.TemplateResponse( "response.html", context )
     
-@app.get( '/status', status_code=200 )
+@app.get( '/status', response_class=HTMLResponse )
 def get_status( request: Request ):
     decks = read_json( 'raffle.json' )
     response = {}
