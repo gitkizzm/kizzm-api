@@ -73,7 +73,7 @@ def clear_json( request: Request ):
     new_deck = new_deck.set_index( 'id' )
     new_deck.to_json( 'raffle.json' )
     response = {}
-    response['title'] = 'Status'
+    response['title'] = 'Retry'
     response['str'] = "Commander Secret Santa restarted. All Data cleared!"
     context = { 'request': request, 'response': response }
     return templates.TemplateResponse( "response.html", context )
@@ -82,10 +82,11 @@ def clear_json( request: Request ):
 def get_status( request: Request, hx_request: Optional[str] = Header(None) ):
     decks = read_json( 'raffle.json' )
     response = {}
-    response['title'] = 'Status'
     if decks.at[0,'dealtOut']:
+        response['title'] = 'Raffle Time!!'
         response['str'] = f"Commander Secret Santa is rdy to start! {len(decks)-1} decks are in the giftpool."
     else:
+        response['title'] = 'Checkin ongoing'
         response['str'] = f"Registration is still ongoing. {len(decks)-1} decks have been registered yet."
     context = { 'request': request, 'response': response }
     #if hx_request:
