@@ -8,21 +8,20 @@
 	</head>
     <body>
 		<div id="status-div">
-        <h1 style="font-size:10vw;">{{ response.title }}</h1>
-        <body>
-			<p style="font-size:5vw;">{{ response.str }}</p>
-		</body>
-		</div>
+			{% include 'partials/status.html' %}
 		<div>
 		<button class="px-3 py-1 bg-blue-600 text-white ml-4"
 				style="font-size:5vw;"
-                hx-get="/status">refresh</button>
+                hx-get="/status"
+				hx-target="#status-div">refresh</button>
 		<button class="px-3 py-1 bg-blue-600 text-white ml-4"
 				style="font-size:5vw;"
-				hx-get="/start">Start Raffle</button>
+				hx-get="/start"
+				hx-target="#status-div">Start Raffle</button>
 		<button class="px-3 py-1 bg-blue-600 text-white ml-4"
 				style="font-size:5vw;"
-				hx-get="/restart">Reset Raffle</button>
+				hx-get="/restart"
+				hx-target="#status-div">Reset Raffle</button>
 		</div>
     </body>
 </html>
