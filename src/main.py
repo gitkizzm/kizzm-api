@@ -69,10 +69,14 @@ def clear_json():
 @app.get( '/status', status_code=200 )
 def get_status():
     decks = read_json( 'raffle.json' )
+    response = {}
+    response['title'] = 'Status'
     if decks.at[0,'dealtOut']:
-        return f"Commander Secret Santa is rdy to start! {len(decks)-1} are in the giftpool."
+        response['str'] = f"Commander Secret Santa is rdy to start! {len(decks)-1} are in the giftpool."
     else:
-        return f"Registration is still ongoing. {len(decks)-1} decks have been registered yet."
+        response['str'] = f"Registration is still ongoing. {len(decks)-1} decks have been registered yet."
+    context = { 'request': request, 'response': response }
+    return templates.TemplateResponse( "response.html", context )
 
 @app.get( '/find', status_code=200 )    
 def find_deck(  d_id: Optional[int] = Query( None, title='DID', description='The Deckid from QR-Code' ),
