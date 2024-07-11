@@ -152,7 +152,7 @@ def start_raffle( request: Request ):
     for gifted, gifter in zip( gOrder, cOrder ):
         decks.at[ gifter, 'owner' ] = decks.at[ gifted, 'creator' ]
     decks.to_json( 'raffle.json' )
-    return get_status( request: Request ) 
+    return get_status( request ) 
                 
 @app.get( '/deal', status_code=201 )
 def dealout_deck( d_id: int = Query( None, title='DID', description='The Deckid from QR-Code' ) ):
