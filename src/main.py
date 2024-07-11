@@ -120,11 +120,30 @@ async def add_all( request: Request ):
 
 @app.get( '/tstP', status_code=201 )
 async def tst_P( request: Request ):
+
+    d_id = 1
+    creator = 'Basti'
+
     response = {}
     response['title'] = 'Onboarding'
-    response['str'] = "Test Status"
-    context = { 'request': request, 'response': response }
-    return templates.TemplateResponse( "onboarding.html", context )
+
+    decks = read_json( 'raffle.json' )
+    if decks.at[0,'dealtOut']:
+        response['str'] = f'Registration closed. Decks get dealtout now!'
+        context = { 'request': request, 'response': response }
+        return templates.TemplateResponse( "onboarding.html", context )
+    if d_id in decks.index.values:
+        response['str'] = f'Sry, your Deck has allready been registred.'
+        context = { 'request': request, 'response': response }
+        return templates.TemplateResponse( "onboarding.html", context )
+    else:
+        decks.at[ d_id, "creator" ] = creator
+        decks.at[ d_id, "owner" ] = ""
+        decks.at[ d_id, "dealtOut" ] = False
+        decks.to_json( 'raffle.json' )
+        response['str'] = f"Thanks {creator}! Your registered Deck {d_id}. Please wait for the raffle to start."
+        context = { 'request': request, 'response': response }
+        return templates.TemplateResponse( "onboarding.html", context )
     
 #@app.post( '/thanks', response_class=HTMLResponse )
 #def get_thanks(request: Request):
@@ -164,6 +183,13 @@ def shuffle_decks(decks):
 def start_raffle( request: Request ):
     # manually starts the raffle, this stops registration access and shuffles
     decks = read_json( 'raffle.json' )
+    if len(decks) < 3:
+        response = {}
+        response['title'] = 'Checkin ongoing'
+        response['str'] = f"Only {len(decks)-1} decks are registred yet. Cant start the Raffle"
+        context = { 'request': request, 'response': response }
+        return templates.TemplateResponse( "response.html", context ) 
+  
     decks.at[0,'dealtOut'] = True #newRaffleRdy Bool
     gOrder, cOrder = shuffle_decks( decks )
     
