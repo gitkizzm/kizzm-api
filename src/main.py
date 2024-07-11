@@ -14,6 +14,10 @@ form tinkering
     
 responsive html stuff
 https://www.w3schools.com/html/tryit.asp?filename=tryhtml_responsive_media_query
+
+
+htmx
+https://www.youtube.com/watch?v=yu0TbJ2BQso
 """
 
 import uvicorn
@@ -76,7 +80,7 @@ def get_status( request: Request ):
     response = {}
     response['title'] = 'Status'
     if decks.at[0,'dealtOut']:
-        response['str'] = f"Commander Secret Santa is rdy to start! {len(decks)-1} are in the giftpool."
+        response['str'] = f"Commander Secret Santa is rdy to start! {len(decks)-1} decks are in the giftpool."
     else:
         response['str'] = f"Registration is still ongoing. {len(decks)-1} decks have been registered yet."
     context = { 'request': request, 'response': response }
