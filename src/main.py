@@ -67,7 +67,7 @@ def clear_json():
     return "Commander Secret Santa restarted. All Data cleared!"
     
 @app.get( '/status', status_code=200 )
-def get_status():
+def get_status( request: Request ):
     decks = read_json( 'raffle.json' )
     response = {}
     response['title'] = 'Status'
@@ -94,7 +94,7 @@ def find_deck(  d_id: Optional[int] = Query( None, title='DID', description='The
     return tmp_decks.to_string()
 
 @app.get( '/addAll', status_code=201 )
-async def add_all( request: Request):
+async def add_all( request: Request ):
     add_deck( 1, 'Julian Dürr' )
     add_deck( 2, 'Steven' )
     add_deck( 3, 'Sidney' )
