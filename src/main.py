@@ -1,4 +1,4 @@
-# -*- coding: utf-8 -*-
+1# -*- coding: utf-8 -*-
 """
 Created on Wed Nov 15 22:14:26 2023
 
@@ -116,8 +116,15 @@ async def add_all( request: Request ):
     add_deck( 4, 'Julien' )
     add_deck( 5, 'Daniel' )
     add_deck( 6, 'Basti' )
-    # return "6 Decks Added!"
     return templates.TemplateResponse( "thanks.html", {"request": request} )
+
+@app.get( '/tstP', status_code=201 )
+async def tst_P( request: Request ):
+    response = {}
+    response['title'] = 'Onboarding'
+    response['str'] = "Test Status"
+    context = { 'request': request, 'response': response }
+    return templates.TemplateResponse( "onboarding.html", context )
     
 #@app.post( '/thanks', response_class=HTMLResponse )
 #def get_thanks(request: Request):
