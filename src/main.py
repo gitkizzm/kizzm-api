@@ -10,6 +10,10 @@ https://www.back4app.com/docs-containers/deployment-process
 form tinkering
     https://github.com/itsthatianguy/youtube/blob/main/fastapi-forms-file-upload/app.py
     https://www.youtube.com/watch?v=L4WBFRQB7Lk
+    
+    
+responsive html stuff
+https://www.w3schools.com/html/tryit.asp?filename=tryhtml_responsive_media_query
 """
 
 import uvicorn
@@ -139,7 +143,7 @@ def shuffle_decks(decks):
         return giftOrder, creatorOrder
     
 @app.get( '/start', status_code=200 )
-def start_raffle():
+def start_raffle( request: Request ):
     # manually starts the raffle, this stops registration access and shuffles
     decks = read_json( 'raffle.json' )
     decks.at[0,'dealtOut'] = True #newRaffleRdy Bool
@@ -148,7 +152,7 @@ def start_raffle():
     for gifted, gifter in zip( gOrder, cOrder ):
         decks.at[ gifter, 'owner' ] = decks.at[ gifted, 'creator' ]
     decks.to_json( 'raffle.json' )
-    return get_status() 
+    return get_status( request: Request ) 
                 
 @app.get( '/deal', status_code=201 )
 def dealout_deck( d_id: int = Query( None, title='DID', description='The Deckid from QR-Code' ) ):
