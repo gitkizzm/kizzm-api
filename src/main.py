@@ -64,7 +64,7 @@ def post_form(request: Request, form_data: AwesomeForm = Depends(AwesomeForm.as_
     return templates.TemplateResponse("awesome-form.html", {"request": request})
 
 @app.get( '/restart', status_code=200 )
-def clear_json():
+def clear_json( request: Request ):
     new_deck = DataFrame( [ { "id": 0,
                                "creator": "",
                                "owner": "",
@@ -72,7 +72,11 @@ def clear_json():
                                } ] )
     new_deck = new_deck.set_index( 'id' )
     new_deck.to_json( 'raffle.json' )
-    return "Commander Secret Santa restarted. All Data cleared!"
+    response = {}
+    response['title'] = 'Status'
+    response['str'] = "Commander Secret Santa restarted. All Data cleared!"
+    context = { 'request': request, 'response': response }
+    return templates.TemplateResponse( "response.html", context )
     
 @app.get( '/status', status_code=200 )
 def get_status( request: Request ):
