@@ -88,8 +88,8 @@ def get_status( request: Request, hx_request: Optional[str] = Header(None) ):
     else:
         response['str'] = f"Registration is still ongoing. {len(decks)-1} decks have been registered yet."
     context = { 'request': request, 'response': response }
-    if hx_request:
-        return templates.TemplateResponse("partials/table.html", context)
+    #if hx_request:
+    #    return templates.TemplateResponse("partials/table.html", context)
     return templates.TemplateResponse( "response.html", context )
 
 @app.get( '/find', status_code=200 )    
