@@ -98,11 +98,11 @@ def add_all():
     add_deck( 5, 'Daniel' )
     add_deck( 6, 'Basti' )
     # return "6 Decks Added!"
-    return get_thanks()
+    return HTMLResponse( content=os.path.join(tmplt_abs_file_path, "thanks.html"), status_code=201 )
     
-@app.post( '/thanks', response_class=HTMLResponse )
-def get_thanks(request: Request):
-    return templates.TemplateResponse("thanks.html", {"request": request})
+#@app.post( '/thanks', response_class=HTMLResponse )
+#def get_thanks(request: Request):
+#    return templates.TemplateResponse("thanks.html", {"request": request})
     
 @app.get( '/addDeck', status_code=201 )
 def add_deck( d_id: int = Query( None, title='DID', description='The Deckid from QR-Code' ),
