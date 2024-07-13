@@ -20,3 +20,18 @@ class AwesomeForm(BaseModel):
             password=password,
             file=file
         )
+
+class RegForm(BaseModel):
+    d_id: str
+    creator: str
+
+    @classmethod
+    def as_form(
+        cls,
+        d_id: str = Form(...),
+        creator: str = Form(...),
+    ):
+        return cls(
+            d_id=d_id,
+            creator=creator
+        )

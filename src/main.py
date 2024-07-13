@@ -25,7 +25,7 @@ from fastapi import FastAPI, Request, Form, Depends, UploadFile, File, Query, He
 from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from schemas import AwesomeForm
+from schemas import AwesomeForm, RegForm
 from typing import Optional
 from random import shuffle
 from pandas import DataFrame, read_json
@@ -119,7 +119,7 @@ async def add_all( request: Request ):
     return templates.TemplateResponse( "thanks.html", {"request": request} )
 
 @app.get( '/tstP', status_code=201 )
-async def tst_P( request: Request ):
+async def tst_P( request: Request, form_data: RegForm = Depends(RegForm.as_form)):
 
     d_id = 1
     creator = 'Basti'
