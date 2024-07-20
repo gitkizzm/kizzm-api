@@ -86,13 +86,17 @@ def clear_json( request: Request ):
     context = { 'request': request, 'response': response }
     return templates.TemplateResponse( "response.html", context )
     
-@app.get( '/', status_code=200 )
+@app.get( '/status', status_code=200 )
 def get_status( request: Request, hx_request: Optional[str] = Header(None) ):
     decks = read_json( 'raffle.json' )
     response = {}
-    if decks.at[0,'dealtOut']:
+    if decks['dealtOut'].all():
+        response['title'] = 'Game Time!!'
+        response['str'] = f"All {len(decks)-1} decks are gifted. GL&HF"
+    elif decks.at[0,'dealtOut']:
         response['title'] = 'Raffle Time!!'
         response['str'] = f"Commander Secret Santa is rdy to start! {len(decks)-1} decks are in the giftpool."
+    
     else:
         response['title'] = 'Checkin ongoing'
         response['str'] = f"Registration is still ongoing. {len(decks)-1} decks have been registered yet."
@@ -125,8 +129,8 @@ async def add_all( request: Request ):
         add_deck( i+1, creator_pool[i] )
 
     response = {}
-    response['title'] = 'Ready'
-    response['str'] = "All 4 Decks where added"
+    response['title'] = 'Ready for Registration'
+    response['str'] = "All 4 Boxed where added"
     context = { 'request': request, 'response': response }
     return templates.TemplateResponse( "response.html", context )
     # return templates.TemplateResponse( "thanks.html", {"request": request} )
@@ -314,26 +318,25 @@ def dealout_deck( request: Request, d_id: int = Query( None, title='DID', descri
     decks = read_json( 'raffle.json' )
     response = {}
 
-    if not decks.at[0,'dealtOut']:
+    if not decks.at[0,'dealtOut']: 
         response['title'] = 'Registration'
         creator = decks.at[d_id,'creator']
         response['str'] = f'Pleas hand this box over to {creator}'
         context = { 'request': request, 'response': response }
         return templates.TemplateResponse( "partials/status.html", context )
+    elif not decks.at[d_id, 'dealtOut']:
+        decks.at[d_id, 'dealtOut'] = True
+        decks.to_json( 'raffle.json' )
+        response['title'] = 'Raffle'
+        owner = decks.at[d_id,'owner']
+        response['str'] = f'Pleas hand this Deck over to {owner}'
+        context = { 'request': request, 'response': response }
+        return templates.TemplateResponse( "partials/status.html", context )
     else:
-        if d_id in decks.index.values:
-            decks.at[d_id,'dealtOut'] = True
-            decks.to_json( 'raffle.json' )
-            name = decks.at[d_id,'owner']
-            response['title'] = 'Start'
-            response['str'] = f'Please hand this deck over to {name}!'
-            context = { 'request': request, 'response': response }
-            return templates.TemplateResponse( "partials/status.html", context )
-        else:
-            response['title'] = 'Waiting'
-            response['str'] = f'Please wait for the registration to start!'
-            context = { 'request': request, 'response': response }
-            return templates.TemplateResponse( "partials/status.html", context )
+        response['title'] = 'Prepare'
+        response['str'] = f'Please wait for the registration to start!'
+        context = { 'request': request, 'response': response }
+        return templates.TemplateResponse( "partials/status.html", context )
 
 if __name__ == "__main__":
     new_deck = DataFrame( [ { "id": 0,
