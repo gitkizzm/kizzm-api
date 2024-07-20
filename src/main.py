@@ -15,9 +15,17 @@ form tinkering
 responsive html stuff
 https://www.w3schools.com/html/tryit.asp?filename=tryhtml_responsive_media_query
 
+infos zu async
+https://fastapi.tiangolo.com/async/
 
 htmx
 https://www.youtube.com/watch?v=yu0TbJ2BQso
+
+URL Rerouting
+https://stackoverflow.com/questions/75726959/how-to-reroute-requests-to-a-different-url-endpoint-in-fastapi
+
+general FastAPI Tutorial:
+https://www.youtube.com/playlist?list=PLqAmigZvYxIL9dnYeZEhMoHcoP4zop8-p
 """
 
 import uvicorn
@@ -78,7 +86,7 @@ def clear_json( request: Request ):
     context = { 'request': request, 'response': response }
     return templates.TemplateResponse( "response.html", context )
     
-@app.get( '/status', status_code=200 )
+@app.get( '/', status_code=200 )
 def get_status( request: Request, hx_request: Optional[str] = Header(None) ):
     decks = read_json( 'raffle.json' )
     response = {}
@@ -110,40 +118,144 @@ def find_deck(  d_id: Optional[int] = Query( None, title='DID', description='The
 
 @app.get( '/addAll', status_code=201 )
 async def add_all( request: Request ):
-    add_deck( 1, 'Julian Dürr' )
+    # add_deck( 1, 'Julian Dürr' )
     add_deck( 2, 'Steven' )
     add_deck( 3, 'Sidney' )
-    add_deck( 4, 'Julien' )
-    add_deck( 5, 'Daniel' )
+    # add_deck( 4, 'Julien' )
+    # add_deck( 5, 'Daniel' )
     add_deck( 6, 'Basti' )
-    return templates.TemplateResponse( "thanks.html", {"request": request} )
-
-@app.get( '/tstP', status_code=201 )
-async def tst_P( request: Request, form_data: RegForm = Depends(RegForm.as_form)):
-
-    d_id = 1
-    creator = 'Basti'
-
+    add_deck( 7, 'Pepe/Phillip' )
     response = {}
-    response['title'] = 'Onboarding'
+    response['title'] = 'Ready'
+    response['str'] = "All 4 Decks where added"
+    context = { 'request': request, 'response': response }
+    return templates.TemplateResponse( "response.html", context )
+    # return templates.TemplateResponse( "thanks.html", {"request": request} )
 
-    decks = read_json( 'raffle.json' )
-    if decks.at[0,'dealtOut']:
-        response['str'] = f'Registration closed. Decks get dealtout now!'
-        context = { 'request': request, 'response': response }
-        return templates.TemplateResponse( "onboarding.html", context )
-    if d_id in decks.index.values:
-        response['str'] = f'Sry, your Deck has allready been registred.'
-        context = { 'request': request, 'response': response }
-        return templates.TemplateResponse( "onboarding.html", context )
-    else:
-        decks.at[ d_id, "creator" ] = creator
-        decks.at[ d_id, "owner" ] = ""
-        decks.at[ d_id, "dealtOut" ] = False
-        decks.to_json( 'raffle.json' )
-        response['str'] = f"Thanks {creator}! Your registered Deck {d_id}. Please wait for the raffle to start."
-        context = { 'request': request, 'response': response }
-        return templates.TemplateResponse( "onboarding.html", context )
+# @app.get( '/', status_code=201 )
+# def check_id( d_id: int = Query( None, title='DID', description='The Deckid from QR-Code' ) ):
+#     decks = read_json( 'raffle.json' )
+#     if decks.at[0,'dealtOut']:
+#         return "Registration closed. Decks get dealtout now!"
+#     if d_id in decks.index.values:
+#         return "This deck is already registred!"
+#     else:
+#         decks.at[ d_id, "creator" ] = creator
+#         decks.at[ d_id, "owner" ] = ""
+#         decks.at[ d_id, "dealtOut" ] = False
+#         decks.to_json( 'raffle.json' )
+#         return f"Thanks {creator}, your deck is now in the gift pool!"
+#     return d_id
+
+# @app.get( '/reg/{d_id}', status_code=201 )
+# def get_tst_P( request: Request, d_id : int, creator: str = Form(...) ):
+    
+#     # print( f'creator: {creator}')
+
+#     decks = read_json( 'raffle.json' )
+#     response = {}
+
+#     if not d_id:      
+#         if decks.at[0,'dealtOut']:
+#             response['title'] = 'Start'
+#             response['str'] = f'Registration closed. Decks get dealtout now!'
+#             context = { 'request': request, 'response': response }
+#             return templates.TemplateResponse( "partials/status.html", context )
+#         else:
+#             response['title'] = 'Waiting'
+#             response['str'] = f'Registration sill ongoin!'
+#             context = { 'request': request, 'response': response }
+#             return templates.TemplateResponse( "partials/status.html", context )
+    
+    
+
+#     if d_id in decks.index.values:
+#         if decks.at[0,'dealtOut']:
+#             response['title'] = 'Start'
+#             response['str'] = f'Registration closed. Decks get dealtout now!'
+#             context = { 'request': request, 'response': response }
+#             return templates.TemplateResponse( "partials/status.html", context )
+#         else:
+#             response['title'] = 'Waiting'
+#             response['str'] = f'Your Deck was registred, waiting for the raffle to start!'
+#             context = { 'request': request, 'response': response }
+#             return templates.TemplateResponse( "partials/status.html", context )
+#     else:
+#         response['title'] = 'Onboarding'
+#         response['str'] = f""
+
+#         context = { 'request': request, 'response': response }
+#         return templates.TemplateResponse( "onboarding.html", context )
+
+# @app.post( '/reg/{d_id}' )
+# def post_tst_P( request: Request,  d_id : int, creator: str = Form(...) ):
+
+#     # print( f'creator: {creator}')
+
+#     decks = read_json( 'raffle.json' )
+#     response = {}
+
+#     if not d_id:      
+#         if decks.at[0,'dealtOut']:
+#             response['title'] = 'Start'
+#             response['str'] = f'Registration closed. Decks get dealtout now!'
+#             context = { 'request': request, 'response': response }
+#             return templates.TemplateResponse( "partials/status.html", context )
+#         else:
+#             response['title'] = 'Waiting'
+#             response['str'] = f'Registration sill ongoin!'
+#             context = { 'request': request, 'response': response }
+#             return templates.TemplateResponse( "partials/status.html", context )
+    
+    
+
+#     if d_id in decks.index.values:
+#         if decks.at[0,'dealtOut']:
+#             response['title'] = 'Start'
+#             response['str'] = f'Registration closed. Decks get dealtout now!'
+#             context = { 'request': request, 'response': response }
+#             return templates.TemplateResponse( "partials/status.html", context )
+#         else:
+#             response['title'] = 'Waiting'
+#             response['str'] = f'Your Deck was registred, waiting for the raffle to start!'
+#             context = { 'request': request, 'response': response }
+#             return templates.TemplateResponse( "partials/status.html", context )
+#     else:
+#         response['title'] = 'Onboarding'
+#         response['str'] = f""
+
+#         context = { 'request': request, 'response': response }
+#         return templates.TemplateResponse( "onboarding.html", context )
+# @app.post( '/', status_code=201 )
+# def post_tst_P( request: Request, form_data: RegForm = Depends(RegForm.as_form)):
+    
+#         decks.at[ d_id, "creator" ] = creator
+#         decks.at[ d_id, "owner" ] = ""
+#         decks.at[ d_id, "dealtOut" ] = False
+#         decks.to_json( 'raffle.json' )
+#     d_id = 1
+#     creator = 'Basti'
+
+#     response = {}
+#     response['title'] = 'Onboarding'
+
+#     decks = read_json( 'raffle.json' )
+#     if decks.at[0,'dealtOut']:
+#         response['str'] = f'Registration closed. Decks get dealtout now!'
+#         context = { 'request': request, 'response': response }
+#         return templates.TemplateResponse( "onboarding.html", context )
+#     elif d_id in decks.index.values:
+#         response['str'] = f'Sry, your Deck has allready been registred.'
+#         context = { 'request': request, 'response': response }
+#         return templates.TemplateResponse( "onboarding.html", context )
+#     else:
+#         decks.at[ d_id, "creator" ] = creator
+#         decks.at[ d_id, "owner" ] = ""
+#         decks.at[ d_id, "dealtOut" ] = False
+#         decks.to_json( 'raffle.json' )
+#         response['str'] = f"Thanks {creator}! Your registered Deck {d_id}. Please wait for the raffle to start."
+#         context = { 'request': request, 'response': response }
+#         return templates.TemplateResponse( "response.html", context )
     
 #@app.post( '/thanks', response_class=HTMLResponse )
 #def get_thanks(request: Request):
@@ -199,15 +311,23 @@ def start_raffle( request: Request ):
     return get_status( request ) 
                 
 @app.get( '/deal', status_code=201 )
-def dealout_deck( d_id: int = Query( None, title='DID', description='The Deckid from QR-Code' ) ):
+def dealout_deck( request: Request, d_id: int = Query( None, title='DID', description='The Deckid from QR-Code' ) ):
     decks = read_json( 'raffle.json' )
+    response = {}
+
     if not decks.at[0,'dealtOut']:
-        return "Not all Decks yet Registred! Please wait until the Commander Secret Santa starts."
+        response['title'] = 'Waiting'
+        response['str'] = f'Not all Decks yet Registred! Please wait until the Commander Raffle starts.'
+        context = { 'request': request, 'response': response }
+        return templates.TemplateResponse( "partials/status.html", context )
     else:
         decks.at[d_id,'dealtOut'] = True
         decks.to_json( 'raffle.json' )
         name = decks.at[d_id,'owner']
-        return f"Please hand this deck over to {name}!"
+        response['title'] = 'Start'
+        response['str'] = f'Please hand this deck over to {name}!'
+        context = { 'request': request, 'response': response }
+        return templates.TemplateResponse( "partials/status.html", context )
 
 if __name__ == "__main__":
     new_deck = DataFrame( [ { "id": 0,
@@ -218,4 +338,4 @@ if __name__ == "__main__":
     new_deck = new_deck.set_index( 'id' )
     new_deck.to_json( 'raffle.json' )
     del new_deck
-    uvicorn.run(app, port=8080, host="0.0.0.0")
+    uvicorn.run('main:app', port=8080, host="0.0.0.0", reload=True)

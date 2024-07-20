@@ -8,17 +8,6 @@
 	</head>
     <body>
 		<div id="status-div">
-			{% include 'partials/status.html' %}
-		<div>
-		<button class="px-3 py-1 bg-blue-600 text-white ml-4"
-				style="font-size:5vw;"
-                hx-get="/status"
-				hx-target="#status-div">register Deck</button>
-		<button class="px-3 py-1 bg-blue-600 text-white ml-4"
-				style="font-size:5vw;"
-				hx-get="/start"
-				disabled
-				hx-target="#status-div">dealout deck</button>
-		</div>
+			{% include 'partials/registration-form.html' %}
     </body>
 </html>
