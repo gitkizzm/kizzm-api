@@ -321,13 +321,19 @@ def dealout_deck( request: Request, d_id: int = Query( None, title='DID', descri
         context = { 'request': request, 'response': response }
         return templates.TemplateResponse( "partials/status.html", context )
     else:
-        decks.at[d_id,'dealtOut'] = True
-        decks.to_json( 'raffle.json' )
-        name = decks.at[d_id,'owner']
-        response['title'] = 'Start'
-        response['str'] = f'Please hand this deck over to {name}!'
-        context = { 'request': request, 'response': response }
-        return templates.TemplateResponse( "partials/status.html", context )
+        if d_id in decks.index.values:
+            decks.at[d_id,'dealtOut'] = True
+            decks.to_json( 'raffle.json' )
+            name = decks.at[d_id,'owner']
+            response['title'] = 'Start'
+            response['str'] = f'Please hand this deck over to {name}!'
+            context = { 'request': request, 'response': response }
+            return templates.TemplateResponse( "partials/status.html", context )
+        else:
+            response['title'] = 'Waiting'
+            response['str'] = f'Please wait for the registration to start!'
+            context = { 'request': request, 'response': response }
+            return templates.TemplateResponse( "partials/status.html", context )
 
 if __name__ == "__main__":
     new_deck = DataFrame( [ { "id": 0,
