@@ -38,7 +38,7 @@ from typing import Optional
 from random import shuffle
 from pandas import DataFrame, read_json
 import os
-
+import random
 
 app = FastAPI()
 
@@ -118,13 +118,12 @@ def find_deck(  d_id: Optional[int] = Query( None, title='DID', description='The
 
 @app.get( '/addAll', status_code=201 )
 async def add_all( request: Request ):
-    # add_deck( 1, 'Julian Dürr' )
-    add_deck( 2, 'Steven' )
-    add_deck( 3, 'Sidney' )
-    # add_deck( 4, 'Julien' )
-    # add_deck( 5, 'Daniel' )
-    add_deck( 6, 'Basti' )
-    add_deck( 7, 'Pepe/Phillip' )
+    creator_pool = [ 'Steven', 'Sidney', 'Basti', 'Pepe/Phillip']
+    random.shuffle( creator_pool )
+
+    for i in range( len(creator_pool) ):
+        add_deck( i+1, creator_pool[i] )
+
     response = {}
     response['title'] = 'Ready'
     response['str'] = "All 4 Decks where added"
@@ -316,8 +315,9 @@ def dealout_deck( request: Request, d_id: int = Query( None, title='DID', descri
     response = {}
 
     if not decks.at[0,'dealtOut']:
-        response['title'] = 'Waiting'
-        response['str'] = f'Not all Decks yet Registred! Please wait until the Commander Raffle starts.'
+        response['title'] = 'Registration'
+        creator = decks.at[d_id,'creator']
+        response['str'] = f'Pleas hand this box over to {creator}'
         context = { 'request': request, 'response': response }
         return templates.TemplateResponse( "partials/status.html", context )
     else:
