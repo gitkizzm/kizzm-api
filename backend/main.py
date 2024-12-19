@@ -1,26 +1,24 @@
 from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
-from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from backend.schemas import DeckSchema
 import json
 from pathlib import Path
 
-# Pfad zur JSON-Datei, in der die Daten gespeichert werden
+# JSON-Datei
 FILE_PATH = Path("raffle.json")
 
 # FastAPI-App erstellen
 app = FastAPI()
 
-# Statische Dateien und Templates einrichten
-app.mount("/static", StaticFiles(directory="frontend"), name="static")
+# Templates für HTML-Seiten
 templates = Jinja2Templates(directory="frontend")
 
 
 @app.get("/", response_class=HTMLResponse)
 async def get_form(request: Request):
     """
-    Endpoint für das HTML-Formular.
+    Zeigt die Startseite mit dem Formular an.
     """
     return templates.TemplateResponse("index.html", {"request": request})
 
@@ -32,7 +30,7 @@ async def submit_form(
     deckUrl: str = Form(None)
 ):
     """
-    Endpoint zum Verarbeiten von Formularen.
+    Verarbeitet das Formular und speichert die Daten.
     """
     try:
         # Daten validieren und speichern
@@ -40,7 +38,7 @@ async def submit_form(
         with FILE_PATH.open("w", encoding="utf-8") as f:
             json.dump(data.dict(), f, ensure_ascii=False, indent=4)
         
-        # Erfolgreich weiterleiten
+        # Erfolgsseite anzeigen
         return RedirectResponse(url="/success", status_code=303)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Fehler beim Speichern der Daten: {e}")

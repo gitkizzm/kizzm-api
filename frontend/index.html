@@ -7,7 +7,8 @@
 </head>
 <body>
     <h1>Deck Registrierung</h1>
-    <form id="deckForm">
+    <form action="/submit" method="post">
+        <!-- Dropdown für Deckersteller -->
         <label for="deckersteller">Name des Deckerstellers:</label>
         <select id="deckersteller" name="deckersteller" required>
             <option value="" disabled selected>Wählen Sie einen Namen</option>
@@ -16,16 +17,20 @@
             <option value="Name3">Name3</option>
         </select>
         <br><br>
+
+        <!-- Eingabefeld für Commander -->
         <label for="commander">Name des Commanders:</label>
         <input type="text" id="commander" name="commander" required>
         <br><br>
+
+        <!-- Optionales Feld für Deck-URL -->
         <label for="deckUrl">URL zum Moxfield oder Archideckt Deck (Optional):</label>
         <input type="url" id="deckUrl" name="deckUrl">
         <br><br>
-        <button type="reset">Reset</button>
-        <button type="button" id="sendBtn">Send</button>
-    </form>
 
-    <script src="script.js"></script>
+        <!-- Buttons -->
+        <button type="reset">Reset</button>
+        <button type="submit">Send</button>
+    </form>
 </body>
 </html>
