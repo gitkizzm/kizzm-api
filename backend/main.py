@@ -35,11 +35,17 @@ async def submit_form(
     try:
         # Konvertiere leere Strings zu None
         deckUrl = deckUrl or None
-        
+
         # Daten validieren und speichern
         data = DeckSchema(deckersteller=deckersteller, commander=commander, deckUrl=deckUrl)
+
+        # Dictionary mit serialisierbaren Typen erstellen
+        serializable_data = data.dict()
+        serializable_data['deckUrl'] = str(serializable_data['deckUrl']) if serializable_data['deckUrl'] else None
+
+        # Daten speichern: JSON-Darstellung mit json.dump()
         with FILE_PATH.open("w", encoding="utf-8") as f:
-            json.dump(data.dict(), f, ensure_ascii=False, indent=4)
+            json.dump(serializable_data, f, ensure_ascii=False, indent=4)
         
         # Erfolgsseite anzeigen
         return RedirectResponse(url="/success", status_code=303)
