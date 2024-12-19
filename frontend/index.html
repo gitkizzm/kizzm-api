@@ -1,1 +1,31 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deck Registrierung</title>
+</head>
+<body>
+    <h1>Deck Registrierung</h1>
+    <form id="deckForm">
+        <label for="deckersteller">Name des Deckerstellers:</label>
+        <select id="deckersteller" name="deckersteller" required>
+            <option value="" disabled selected>Wählen Sie einen Namen</option>
+            <option value="Name1">Name1</option>
+            <option value="Name2">Name2</option>
+            <option value="Name3">Name3</option>
+        </select>
+        <br><br>
+        <label for="commander">Name des Commanders:</label>
+        <input type="text" id="commander" name="commander" required>
+        <br><br>
+        <label for="deckUrl">URL zum Moxfield oder Archideckt Deck (Optional):</label>
+        <input type="url" id="deckUrl" name="deckUrl">
+        <br><br>
+        <button type="reset">Reset</button>
+        <button type="button" id="sendBtn">Send</button>
+    </form>
 
+    <script src="script.js"></script>
+</body>
+</html>
