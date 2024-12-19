@@ -33,6 +33,9 @@ async def submit_form(
     Verarbeitet das Formular und speichert die Daten.
     """
     try:
+        # Konvertiere leere Strings zu None
+        deckUrl = deckUrl or None
+        
         # Daten validieren und speichern
         data = DeckSchema(deckersteller=deckersteller, commander=commander, deckUrl=deckUrl)
         with FILE_PATH.open("w", encoding="utf-8") as f:

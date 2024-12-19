@@ -1,9 +1,7 @@
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel, HttpUrl, Field
 from typing import Optional
 
 class DeckSchema(BaseModel):
-    """Schema für die Daten eines Decks."""
     deckersteller: str
     commander: str
-    deckUrl: Optional[HttpUrl] = None  # Optionaler Parameter für die Deck-URL
-
+    deckUrl: Optional[HttpUrl] = Field(default=None, description="Optional URL for the deck")
