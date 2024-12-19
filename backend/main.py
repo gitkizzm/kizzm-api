@@ -23,17 +23,30 @@ async def get_form(request: Request):
     return templates.TemplateResponse("index.html", {"request": request})
 
 
-@app.post("/submit", response_class=RedirectResponse)
+@app.post("/submit", response_class=HTMLResponse)
 async def submit_form(
+    request: Request,
     deckersteller: str = Form(...),
     commander: str = Form(...),
     deckUrl: str = Form(None)
 ):
     """
-    Verarbeitet das Formular und speichert die Daten.
+    Verarbeitet das Formular, prüft den Deckersteller und speichert die Daten.
     """
     try:
-        # Konvertiere leere Strings zu None
+        # Prüfen, ob die Datei existiert und der Deckersteller bereits eingetragen ist
+        if FILE_PATH.exists():
+            with FILE_PATH.open("r", encoding="utf-8") as f:
+                data = json.load(f)
+                if data.get("deckersteller") == deckersteller:
+                    # Fehler: Deckersteller existiert bereits
+                    return templates.TemplateResponse(
+                        "index.html",
+                        {
+                            "request": request,
+                            "error": f"Der Deckersteller '{deckersteller}' ist bereits registriert.",
+                        }
+                    )
         deckUrl = deckUrl or None
 
         # Daten validieren und speichern
