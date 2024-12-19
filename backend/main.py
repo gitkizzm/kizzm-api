@@ -1,33 +1,54 @@
-from fastapi import FastAPI, HTTPException
-from backend.schemas import DeckSchema  # Import des Schemas
+from fastapi import FastAPI, Form, HTTPException, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from backend.schemas import DeckSchema
 import json
 from pathlib import Path
 
-
-# Pfad zur Datei
+# Pfad zur JSON-Datei, in der die Daten gespeichert werden
 FILE_PATH = Path("raffle.json")
 
-# FastAPI-App
+# FastAPI-App erstellen
 app = FastAPI()
 
-@app.post("/save")
-async def save_deck(data: DeckSchema):
+# Statische Dateien und Templates einrichten
+app.mount("/static", StaticFiles(directory="frontend"), name="static")
+templates = Jinja2Templates(directory="frontend")
+
+
+@app.get("/", response_class=HTMLResponse)
+async def get_form(request: Request):
     """
-    Route zum Speichern eines Decks.
-    Erwartet ein JSON-Objekt, das dem DeckSchema entspricht.
+    Endpoint für das HTML-Formular.
+    """
+    return templates.TemplateResponse("index.html", {"request": request})
+
+
+@app.post("/submit", response_class=RedirectResponse)
+async def submit_form(
+    deckersteller: str = Form(...),
+    commander: str = Form(...),
+    deckUrl: str = Form(None)
+):
+    """
+    Endpoint zum Verarbeiten von Formularen.
     """
     try:
-        # Daten in JSON-Datei speichern
+        # Daten validieren und speichern
+        data = DeckSchema(deckersteller=deckersteller, commander=commander, deckUrl=deckUrl)
         with FILE_PATH.open("w", encoding="utf-8") as f:
             json.dump(data.dict(), f, ensure_ascii=False, indent=4)
-        return {"message": "Daten erfolgreich gespeichert."}
+        
+        # Erfolgreich weiterleiten
+        return RedirectResponse(url="/success", status_code=303)
     except Exception as e:
-        # Fehlerbehandlung bei Problemen mit dem Speichern
         raise HTTPException(status_code=500, detail=f"Fehler beim Speichern der Daten: {e}")
 
-@app.get("/")
-async def root():
+
+@app.get("/success", response_class=HTMLResponse)
+async def success_page(request: Request):
     """
-    Root-Endpunkt. Kann verwendet werden, um die Verfügbarkeit der API zu testen.
+    Erfolgsseite nach dem Absenden des Formulars.
     """
-    return {"message": "Willkommen bei der Deck-Registrierungs-API!"}
+    return templates.TemplateResponse("success.html", {"request": request})
