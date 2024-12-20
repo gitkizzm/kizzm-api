@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CustomerControlPanel</title>
+</head>
+<body>
+    <h1>CustomerControlPanel</h1>
+    <p>Verwalten Sie die Datei raffle.json über dieses Control Panel.</p>
+
+    <!-- Status der Datei anzeigen -->
+    {% if file_exists %}
+    <p style="color: green;">Die Datei raffle.json existiert.</p>
+    {% else %}
+    <p style="color: red;">Die Datei raffle.json existiert nicht.</p>
+    {% endif %}
+
+    <!-- Clear Button -->
+    <form action="/clear" method="post">
+        <button type="submit">Daten löschen</button>
+    </form>
+</body>
+</html>

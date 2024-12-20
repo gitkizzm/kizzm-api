@@ -8,7 +8,7 @@
 <body>
     <h1>Deck Registrierung</h1>
 
-    <!-- Fehlermeldung (nur wenn vorhanden) -->
+    <!-- Fehlermeldung (Tooltip oder Hinweis) -->
     {% if error %}
     <div style="color: red; font-weight: bold;">
         {{ error }}
@@ -19,17 +19,20 @@
         <label for="deckersteller">Name des Deckerstellers:</label>
         <select id="deckersteller" name="deckersteller" required>
             <option value="" disabled selected>Wählen Sie einen Namen</option>
-            <option value="Name1">Name1</option>
-            <option value="Name2">Name2</option>
-            <option value="Name3">Name3</option>
+            <option value="Name1" {% if values and values.get('deckersteller') == 'Name1' %}selected{% endif %}>Name1</option>
+            <option value="Name2" {% if values and values.get('deckersteller') == 'Name2' %}selected{% endif %}>Name2</option>
+            <option value="Name3" {% if values and values.get('deckersteller') == 'Name3' %}selected{% endif %}>Name3</option>
         </select>
         <br><br>
+
         <label for="commander">Name des Commanders:</label>
-        <input type="text" id="commander" name="commander" required>
+        <input type="text" id="commander" name="commander" required value="{{ values.commander if values }}">
         <br><br>
+
         <label for="deckUrl">URL zum Moxfield oder Archideckt Deck (Optional):</label>
-        <input type="url" id="deckUrl" name="deckUrl">
+        <input type="url" id="deckUrl" name="deckUrl" value="{{ values.deckUrl if values }}">
         <br><br>
+
         <button type="reset">Reset</button>
         <button type="submit">Send</button>
     </form>
