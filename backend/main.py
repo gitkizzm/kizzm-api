@@ -1,3 +1,4 @@
+import uvicorn
 from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
@@ -64,13 +65,12 @@ async def submit_form(
     deck_id: int = Form(...)
 ):
     """
-    Verarbeitet das Formular, prüft den Deckersteller und fügt neue Datensätze hinzu.
+    Verarbeitet das Formular, prüft die DeckID und den Deckersteller, und fügt neue Datensätze hinzu.
     """
     try:
         # Konvertiere leere Strings zu None
         deckUrl = deckUrl or None
 
-# Laden bestehender Daten
         # Laden bestehender Daten
         data_list = []
         if FILE_PATH.exists():
@@ -94,8 +94,25 @@ async def submit_form(
                     "index.html",
                     {
                         "request": request,
-                        "error": f"Der Deckersteller '{deckersteller}' ist bereits registriert.",
-                        "values": {"commander": commander, "deckUrl": deckUrl},
+                        "deck_id": deck_id,
+                        "error": f"'{deckersteller}' hat bereits ein Deck registriert. Bitte überprüfe deine Namens auswahl",
+                        "values": {"deckersteller": deckersteller, "commander": commander, "deckUrl": deckUrl},
+                        "participants": [entry.get("deckersteller") for entry in data_list],
+                    }
+                )
+            
+        # Prüfen, ob die DeckID bereits existiert
+        for entry in data_list:
+            if entry.get("deck_id") == deck_id:
+                # Fehler: Deck ID existiert bereits
+                return templates.TemplateResponse(
+                    "index.html",
+                    {
+                        "request": request,
+                        "deck_id": deck_id,
+                        "error": f"Diese Deck ID ist bereits registriert.",
+                        "values": {"deckersteller": deckersteller, "commander": commander, "deckUrl": deckUrl},
+                        "participants": [entry.get("deckersteller") for entry in data_list],
                     }
                 )
 
@@ -182,3 +199,6 @@ async def start_raffle():
         return RedirectResponse(url="/CCP", status_code=303)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Fehler beim Starten des Raffles: {e}")
+
+if __name__ == "__main__":
+    uvicorn.run('main:app', port=8000, host="0.0.0.0", reload=True)
