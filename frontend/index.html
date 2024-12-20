@@ -8,36 +8,49 @@
 <body>
     <h1>Deck Registrierung</h1>
 
-    <!-- Fehlermeldung (Tooltip oder Hinweis) -->
-    {% if error %}
-    <div style="color: red; font-weight: bold;">
-        {{ error }}
-    </div>
-    {% endif %}
+    <!-- Dynamische Anzeige basierend auf deck_id und start_file_exists -->
+    {% if deck_id == 0 %}
+        {% if start_file_exists %}
+        <p style="color: green; font-weight: bold;">
+            Bitte scant jetzt noch mal die Decks, und verteilt Sie wie angegeben.
+        </p>
+        {% else %}
+        <p style="color: red; font-weight: bold;">
+            Bitte warte, bis alle Decks registriert wurden.
+        </p>
+        {% endif %}
+    {% else %}
+        <!-- Formular wird nur angezeigt, wenn DeckID != 0 -->
+        {% if error %}
+        <div style="color: red; font-weight: bold;">
+            {{ error }}
+        </div>
+        {% endif %}
 
-    <form action="/submit" method="post">
-        <label for="deckersteller">Name des Deckerstellers:</label>
-        <select id="deckersteller" name="deckersteller" required>
-            <option value="" disabled selected>Wählen Sie einen Namen</option>
-            <option value="Name1" {% if values and values.get('deckersteller') == 'Name1' %}selected{% endif %}>Name1</option>
-            <option value="Name2" {% if values and values.get('deckersteller') == 'Name2' %}selected{% endif %}>Name2</option>
-            <option value="Name3" {% if values and values.get('deckersteller') == 'Name3' %}selected{% endif %}>Name3</option>
-        </select>
-        <br><br>
-    
-        <label for="commander">Name des Commanders:</label>
-        <input type="text" id="commander" name="commander" required value="{{ values.commander if values }}">
-        <br><br>
-    
-        <label for="deckUrl">URL zum Moxfield oder Archideckt Deck (Optional):</label>
-        <input type="url" id="deckUrl" name="deckUrl" value="{{ values.deckUrl if values }}">
-        <br><br>
-    
-        <!-- Hidden Input für DeckID -->
-        <input type="hidden" name="deck_id" value="{{ deck_id }}">
-    
-        <button type="reset">Reset</button>
-        <button type="submit">Send</button>
-    </form>
+        <form action="/submit" method="post">
+            <label for="deckersteller">Name des Deckerstellers:</label>
+            <select id="deckersteller" name="deckersteller" required>
+                <option value="" disabled selected>Wählen Sie einen Namen</option>
+                <option value="Name1" {% if values and values.get('deckersteller') == 'Name1' %}selected{% endif %}>Name1</option>
+                <option value="Name2" {% if values and values.get('deckersteller') == 'Name2' %}selected{% endif %}>Name2</option>
+                <option value="Name3" {% if values and values.get('deckersteller') == 'Name3' %}selected{% endif %}>Name3</option>
+            </select>
+            <br><br>
+
+            <label for="commander">Name des Commanders:</label>
+            <input type="text" id="commander" name="commander" required value="{{ values.commander if values }}">
+            <br><br>
+
+            <label for="deckUrl">URL zum Moxfield oder Archideckt Deck (Optional):</label>
+            <input type="url" id="deckUrl" name="deckUrl" value="{{ values.deckUrl if values }}">
+            <br><br>
+
+            <!-- Hidden Input für DeckID -->
+            <input type="hidden" name="deck_id" value="{{ deck_id }}">
+
+            <button type="reset">Reset</button>
+            <button type="submit">Send</button>
+        </form>
+    {% endif %}
 </body>
 </html>

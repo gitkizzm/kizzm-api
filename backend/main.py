@@ -18,13 +18,17 @@ templates = Jinja2Templates(directory="frontend")
 @app.get("/", response_class=HTMLResponse)
 async def get_form(request: Request, deck_id: int = 0):
     """
-    Zeigt die Startseite mit dem Formular an und übergibt den DeckID-Wert.
+    Zeigt die Startseite mit dem Formular an und überprüft den Status der DeckID und der Datei start.txt.
     """
+    # Prüfen, ob die Datei start.txt existiert
+    start_file_exists = Path("start.txt").exists()
+
     return templates.TemplateResponse(
         "index.html",
         {
             "request": request,
-            "deck_id": deck_id,  # DeckID an die Seite übergeben
+            "deck_id": deck_id,              # DeckID an die HTML-Seite übergeben
+            "start_file_exists": start_file_exists,  # Existenz von start.txt übergeben
         }
     )
 
