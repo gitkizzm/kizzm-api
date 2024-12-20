@@ -201,4 +201,4 @@ async def start_raffle():
         raise HTTPException(status_code=500, detail=f"Fehler beim Starten des Raffles: {e}")
 
 if __name__ == "__main__":
-    uvicorn.run('main:app', port=8000, host="0.0.0.0", reload=True)
+    uvicorn.run('main:app', port=8080, host="0.0.0.0", reload=True)
