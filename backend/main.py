@@ -18,17 +18,31 @@ templates = Jinja2Templates(directory="frontend")
 @app.get("/", response_class=HTMLResponse)
 async def get_form(request: Request, deck_id: int = 0):
     """
-    Zeigt die Startseite mit dem Formular an und überprüft den Status der DeckID und der Datei start.txt.
+    Zeigt die Startseite mit dem Formular an und verarbeitet Bedingungen basierend auf deck_id, raffle.json und start.txt.
     """
-    # Prüfen, ob die Datei start.txt existiert
     start_file_exists = Path("start.txt").exists()
+
+    # Prüfen, ob raffle.json existiert und die deck_id enthalten ist
+    existing_entry = None
+    if FILE_PATH.exists():
+        try:
+            with FILE_PATH.open("r", encoding="utf-8") as f:
+                content = json.load(f)
+                if isinstance(content, list):  # Wenn raffle.json eine Liste ist
+                    for entry in content:
+                        if entry.get("deck_id") == deck_id:
+                            existing_entry = entry
+                            break
+        except (json.JSONDecodeError, ValueError):
+            pass
 
     return templates.TemplateResponse(
         "index.html",
         {
             "request": request,
-            "deck_id": deck_id,              # DeckID an die HTML-Seite übergeben
-            "start_file_exists": start_file_exists,  # Existenz von start.txt übergeben
+            "deck_id": deck_id,
+            "start_file_exists": start_file_exists,
+            "existing_entry": existing_entry,  # Übergebe den Datensatz oder None
         }
     )
 

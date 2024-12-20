@@ -8,8 +8,8 @@
 <body>
     <h1>Deck Registrierung</h1>
 
-    <!-- Dynamische Anzeige basierend auf deck_id und start_file_exists -->
-    {% if deck_id == 0 %}
+    {% if deck_id == 0 or existing_entry and not start_file_exists %}
+        <!-- Text, wenn deck_id = 0 oder bereits registriert ist und start.txt nicht existiert -->
         {% if start_file_exists %}
         <p style="color: green; font-weight: bold;">
             Bitte scant jetzt noch mal die Decks, und verteilt Sie wie angegeben.
@@ -19,8 +19,16 @@
             Bitte warte, bis alle Decks registriert wurden.
         </p>
         {% endif %}
+    {% elif existing_entry and start_file_exists %}
+        <!-- Zeige den Datensatz, wenn start.txt existiert -->
+        <h2>Details für Deck ID {{ deck_id }}</h2>
+        <ul>
+            <li><strong>Deckersteller:</strong> {{ existing_entry.deckersteller }}</li>
+            <li><strong>Commander:</strong> {{ existing_entry.commander }}</li>
+            <li><strong>Deck URL:</strong> <a href="{{ existing_entry.deckUrl }}">{{ existing_entry.deckUrl }}</a></li>
+        </ul>
     {% else %}
-        <!-- Formular wird nur angezeigt, wenn DeckID != 0 -->
+        <!-- Formular anzeigen, wenn deck_id gültig und nicht registriert -->
         {% if error %}
         <div style="color: red; font-weight: bold;">
             {{ error }}
