@@ -24,15 +24,18 @@
             <option value="Name3" {% if values and values.get('deckersteller') == 'Name3' %}selected{% endif %}>Name3</option>
         </select>
         <br><br>
-
+    
         <label for="commander">Name des Commanders:</label>
         <input type="text" id="commander" name="commander" required value="{{ values.commander if values }}">
         <br><br>
-
+    
         <label for="deckUrl">URL zum Moxfield oder Archideckt Deck (Optional):</label>
         <input type="url" id="deckUrl" name="deckUrl" value="{{ values.deckUrl if values }}">
         <br><br>
-
+    
+        <!-- Hidden Input für DeckID -->
+        <input type="hidden" name="deck_id" value="{{ deck_id }}">
+    
         <button type="reset">Reset</button>
         <button type="submit">Send</button>
     </form>

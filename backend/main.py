@@ -16,19 +16,25 @@ templates = Jinja2Templates(directory="frontend")
 
 
 @app.get("/", response_class=HTMLResponse)
-async def get_form(request: Request):
+async def get_form(request: Request, deck_id: int = 0):
     """
-    Zeigt die Startseite mit dem Formular an.
+    Zeigt die Startseite mit dem Formular an und übergibt den DeckID-Wert.
     """
-    return templates.TemplateResponse("index.html", {"request": request})
-
+    return templates.TemplateResponse(
+        "index.html",
+        {
+            "request": request,
+            "deck_id": deck_id,  # DeckID an die Seite übergeben
+        }
+    )
 
 @app.post("/submit", response_class=HTMLResponse)
 async def submit_form(
     request: Request,
     deckersteller: str = Form(...),
     commander: str = Form(...),
-    deckUrl: str = Form(None)
+    deckUrl: str = Form(None),
+    deck_id: int = Form(...)
 ):
     """
     Verarbeitet das Formular, prüft den Deckersteller und fügt neue Datensätze hinzu.
@@ -70,6 +76,7 @@ async def submit_form(
         new_entry = DeckSchema(deckersteller=deckersteller, commander=commander, deckUrl=deckUrl)
         serializable_data = new_entry.dict()
         serializable_data['deckUrl'] = str(serializable_data['deckUrl']) if serializable_data['deckUrl'] else None
+        serializable_data['deck_id'] = deck_id  # DeckID hinzufügen
         data_list.append(serializable_data)
 
         # Daten zurück in die Datei schreiben
