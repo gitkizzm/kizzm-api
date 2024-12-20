@@ -20,6 +20,14 @@ async def get_form(request: Request, deck_id: int = 0):
     """
     Zeigt die Startseite mit dem Formular an und verarbeitet Bedingungen basierend auf deck_id, raffle.json und start.txt.
     """
+    # Prüfen, ob teilnehmer.txt existiert und Namen laden
+    participants = []
+    participants_file = Path("teilnehmer.txt")
+    if participants_file.exists():
+        with participants_file.open("r", encoding="utf-8") as f:
+            participants = [line.strip() for line in f.readlines() if line.strip()]  # Entferne leere Zeilen
+
+    # Status von start.txt prüfen
     start_file_exists = Path("start.txt").exists()
 
     # Prüfen, ob raffle.json existiert und die deck_id enthalten ist
@@ -43,6 +51,7 @@ async def get_form(request: Request, deck_id: int = 0):
             "deck_id": deck_id,
             "start_file_exists": start_file_exists,
             "existing_entry": existing_entry,  # Übergebe den Datensatz oder None
+            "participants": participants,  # Übergabe der Teilnehmernamen
         }
     )
 
@@ -117,28 +126,59 @@ async def success_page(request: Request):
 @app.post("/clear")
 async def clear_data():
     """
-    Löscht die raffle.json-Datei, wenn sie existiert, und leitet den Benutzer zurück zum CCP.
+    Löscht die Dateien raffle.json und start.txt, falls vorhanden, und erstellt eine leere raffle.json.
+    Leitet den Benutzer anschließend zurück zum CCP.
     """
     try:
+        # Löschen von raffle.json, falls sie existiert
         if FILE_PATH.exists():
-            FILE_PATH.unlink()  # Datei löschen
-        # Nach Abschluss auf /CCP umleiten
+            FILE_PATH.unlink()
+        # Löschen von start.txt, falls sie existiert
+        if Path("start.txt").exists():
+            Path("start.txt").unlink()
+        # Erstellen einer leeren raffle.json
+        with FILE_PATH.open("w", encoding="utf-8") as f:
+            json.dump([], f, ensure_ascii=False, indent=4)
+        # Weiterleitung zurück zum Customer Control Panel
         return RedirectResponse(url="/CCP", status_code=303)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Fehler beim Löschen der Datei: {e}")
-
+        raise HTTPException(status_code=500, detail=f"Fehler beim Löschen der Dateien: {e}")
 
 @app.get("/CCP", response_class=HTMLResponse)
 async def customer_control_panel(request: Request):
     """
-    Zeigt die Customer Control Panel Seite an und prüft, ob die raffle.json-Datei existiert.
+    Zeigt die Customer Control Panel Seite an, überprüft den Status von start.txt und raffle.json.
     """
-    # Prüfen, ob die Datei existiert
-    file_exists = FILE_PATH.exists()
+    # Prüfen, ob start.txt existiert
+    start_file_exists = Path("start.txt").exists()
+
+    # Prüfen, ob raffle.json existiert und Anzahl der DeckIDs ermitteln
+    deck_count = -1
+    if FILE_PATH.exists():
+        try:
+            with FILE_PATH.open("r", encoding="utf-8") as f:
+                content = json.load(f)
+                if isinstance(content, list):
+                    deck_count = len({entry.get("deck_id") for entry in content if "deck_id" in entry})
+        except (json.JSONDecodeError, ValueError):
+            pass
+
     return templates.TemplateResponse(
         "CustomerControlPanel.html",
         {
             "request": request,
-            "file_exists": file_exists,  # Ergebnis der Prüfung an die HTML-Seite übergeben
+            "start_file_exists": start_file_exists,
+            "deck_count": deck_count,
         }
     )
+
+@app.post("/startRaffle")
+async def start_raffle():
+    """
+    Führt den Raffle-Start durch und leitet den Benutzer zurück zum CCP.
+    """
+    try:
+        # Aktionen für den Raffle-Start (optional: hier Platz für Logik)
+        return RedirectResponse(url="/CCP", status_code=303)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Fehler beim Starten des Raffles: {e}")

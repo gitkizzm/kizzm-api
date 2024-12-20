@@ -7,18 +7,33 @@
 </head>
 <body>
     <h1>CustomerControlPanel</h1>
-    <p>Verwalten Sie die Datei raffle.json über dieses Control Panel.</p>
 
-    <!-- Status der Datei anzeigen -->
-    {% if file_exists %}
-    <p style="color: green;">Die Datei raffle.json existiert.</p>
+    <!-- Status von start.txt -->
+    {% if start_file_exists %}
+    <p style="color: green;">Der Raffel ist gestartet</p>
     {% else %}
-    <p style="color: red;">Die Datei raffle.json existiert nicht.</p>
+    <p style="color: red;">Die Deckregistrierung läuft noch</p>
+    {% endif %}
+
+    <!-- Status von raffle.json -->
+    {% if deck_count > 0 %}
+    <p>Es sind {{ deck_count }} unterschiedliche Decks registriert.</p>
+    {% else %}
+        {% if deck_count == 0 %}
+        <p style="color: red;">Es sind noch keine Decks eingetragen.</p>
+        {% else %}
+        <p style="color: red;">Die Datei raffle.json existiert nicht.</p>
+        {% endif %}
     {% endif %}
 
     <!-- Clear Button -->
     <form action="/clear" method="post">
         <button type="submit">Daten löschen</button>
+    </form>
+
+    <!-- Start Raffle Button -->
+    <form action="/startRaffle" method="post">
+        <button type="submit">Raffle starten</button>
     </form>
 </body>
 </html>
