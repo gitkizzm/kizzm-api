@@ -9,8 +9,9 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Anwendungscode kopieren
-COPY backend ./backend
-COPY frontend ./frontend
+#COPY backend ./backend
+#COPY frontend ./frontend
+COPY . .
 
 # Port definieren
 EXPOSE 8080
