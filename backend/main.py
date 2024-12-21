@@ -36,6 +36,7 @@ async def get_form(request: Request, deck_id: int = 0):
 
     # Prüfen, ob raffle.json existiert und die deck_id enthalten ist
     existing_entry = None
+    deckOwner = None
     if FILE_PATH.exists():
         try:
             with FILE_PATH.open("r", encoding="utf-8") as f:
@@ -44,6 +45,7 @@ async def get_form(request: Request, deck_id: int = 0):
                     for entry in content:
                         if entry.get("deck_id") == deck_id:
                             existing_entry = entry
+                            deckOwner = entry.get("deckOwner")  # Wert für deckOwner laden
                             break
         except (json.JSONDecodeError, ValueError):
             pass
@@ -55,6 +57,7 @@ async def get_form(request: Request, deck_id: int = 0):
             "deck_id": deck_id,
             "start_file_exists": start_file_exists,
             "existing_entry": existing_entry,  # Übergebe den Datensatz oder None
+            "deckOwner": deckOwner,  # Übergebe den deckOwner
             "participants": participants,  # Übergabe der Teilnehmernamen
         }
     )
