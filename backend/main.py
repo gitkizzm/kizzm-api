@@ -61,7 +61,7 @@ async def get_form(request: Request, deck_id: int = 0):
 async def submit_form(
     request: Request,
     deckersteller: str = Form(...),
-    commander: str = Form(...),
+    commander: str = Form(None),
     deckUrl: str = Form(None),
     deck_id: int = Form(...)
 ):
@@ -71,6 +71,7 @@ async def submit_form(
     try:
         # Konvertiere leere Strings zu None
         deckUrl = deckUrl or None
+        commander = commander or None
 
         # Laden bestehender Daten
         data_list = []
