@@ -5,6 +5,8 @@ from fastapi.templating import Jinja2Templates
 from backend.schemas import DeckSchema
 import json
 from pathlib import Path
+import pandas as pd
+from random import shuffle
 #python -m uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 
 # JSON-Datei
@@ -203,9 +205,81 @@ async def start_raffle():
         with start_file.open("w", encoding="utf-8") as f:
             f.write("")  # Leere Datei erstellen
         # Aktionen für den Raffle-Start (optional: hier Platz für Logik)
+        
+        deckersteller_list = []
+        if FILE_PATH.exists():
+            try:
+                with FILE_PATH.open("r", encoding="utf-8") as f:
+                    content = json.load(f)
+                    if isinstance(content, list):
+                        # Sammle alle Deckersteller
+                        deckersteller_list = [entry.get("deckersteller") for entry in content if "deckersteller" in entry]
+            except (json.JSONDecodeError, ValueError):
+                # Fehler beim Einlesen von raffle.json
+                raise HTTPException(status_code=500, detail="Fehler beim Einlesen der raffle.json-Datei.")
+        cOrder, gOrder=shuffle_decks( deckersteller_list )
+        for creator, new_owner in zip( cOrder, gOrder ):
+            update_deck_owner( creator, new_owner )
+
         return RedirectResponse(url="/CCP", status_code=303)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Fehler beim Starten des Raffles: {e}")
+
+def shuffle_decks(deckCreators):
+    creatorOrder = deckCreators[:]
+    giftOrder = deckCreators[:]
+    shuffleCount = 0
+
+    # Shuffle, bis kein Deckersteller sein eigenes Deck erhält
+    while any([i == j for i, j in zip(giftOrder, creatorOrder)]):
+        shuffle(creatorOrder)
+        shuffle(giftOrder)
+        shuffleCount += 1
+        print('Shuffle Count is {}'.format(shuffleCount))
+    else:
+        return giftOrder, creatorOrder
+
+def update_deck_owner(deckersteller, new_deck_owner):
+    """
+    Aktualisiert das Feld 'deckOwner' für einen bestimmten 'deckersteller' in der raffle.json.
+    """
+    try:
+        # Prüfen, ob die Datei existiert
+        if not FILE_PATH.exists():
+            print("Die Datei raffle.json existiert nicht.")
+            return
+
+        # Datei einlesen
+        with FILE_PATH.open("r", encoding="utf-8") as f:
+            content = json.load(f)
+
+        # Sicherstellen, dass der Inhalt eine Liste ist
+        if not isinstance(content, list):
+            print("Ungültiges Format in raffle.json: Erwartet wird eine Liste.")
+            return
+
+        # Den Eintrag für den angegebenen deckersteller finden
+        entry_found = False
+        for entry in content:
+            if entry.get("deckersteller") == deckersteller:
+                entry["deckOwner"] = new_deck_owner  # Feld aktualisieren
+                entry_found = True
+                break
+
+        if not entry_found:
+            print(f"Kein Eintrag für den Deckersteller '{deckersteller}' gefunden.")
+            return
+
+        # Aktualisierte Daten zurück in die Datei schreiben
+        with FILE_PATH.open("w", encoding="utf-8") as f:
+            json.dump(content, f, ensure_ascii=False, indent=4)
+
+        print(f"Der Eintrag für '{deckersteller}' wurde erfolgreich aktualisiert.")
+    except (json.JSONDecodeError, ValueError) as e:
+        print(f"Fehler beim Einlesen der raffle.json: {e}")
+    except Exception as e:
+        print(f"Ein unerwarteter Fehler ist aufgetreten: {e}")
+
 
 if __name__ == "__main__":
     uvicorn.run('main:app', port=8080, host="0.0.0.0", reload=True)

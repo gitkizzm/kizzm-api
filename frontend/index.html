@@ -21,12 +21,7 @@
         {% endif %}
     {% elif existing_entry %}
         {% if start_file_exists %}
-        <h2>Details für Deck ID {{ deck_id }}</h2>
-        <ul>
-            <li><strong>Deckersteller:</strong> {{ existing_entry.deckersteller }}</li>
-            <li><strong>Commander:</strong> {{ existing_entry.commander }}</li>
-            <li><strong>Deck URL:</strong> <a href="{{ existing_entry.deckUrl }}">{{ existing_entry.deckUrl }}</a></li>
-        </ul>
+        <h2>Bitte übergebe dieses Deck an {{ deckOwner }}</h2>
         {% else %}
         <p style="color: red; font-weight: bold;">
             Dieses Deck wurde bereits registriert. Bitte warte bis der Raffel startet.
