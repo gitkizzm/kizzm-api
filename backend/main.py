@@ -123,6 +123,7 @@ async def submit_form(
         serializable_data = new_entry.dict()
         serializable_data['deckUrl'] = str(serializable_data['deckUrl']) if serializable_data['deckUrl'] else None
         serializable_data['deck_id'] = deck_id  # DeckID hinzufügen
+        serializable_data['deckOwner'] = None
         data_list.append(serializable_data)
 
         # Daten zurück in die Datei schreiben
@@ -197,6 +198,10 @@ async def start_raffle():
     Führt den Raffle-Start durch und leitet den Benutzer zurück zum CCP.
     """
     try:
+         # Leere start.txt erstellen
+        start_file = Path("start.txt")
+        with start_file.open("w", encoding="utf-8") as f:
+            f.write("")  # Leere Datei erstellen
         # Aktionen für den Raffle-Start (optional: hier Platz für Logik)
         return RedirectResponse(url="/CCP", status_code=303)
     except Exception as e:

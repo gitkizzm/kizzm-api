@@ -4,13 +4,22 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CustomerControlPanel</title>
+    <style>
+        .button-container {
+            display: flex;
+            gap: 10px;
+        }
+        .button-container form {
+            margin: 0;
+        }
+    </style>
 </head>
 <body>
     <h1>CustomerControlPanel</h1>
 
     <!-- Status von start.txt -->
     {% if start_file_exists %}
-    <p style="color: green;">Der Raffel ist gestartet</p>
+    <p style="color: green;">Der Raffle ist gestartet</p>
     {% else %}
     <p style="color: red;">Die Deckregistrierung läuft noch</p>
     {% endif %}
@@ -26,14 +35,17 @@
         {% endif %}
     {% endif %}
 
-    <!-- Clear Button -->
-    <form action="/clear" method="post">
-        <button type="submit">Daten löschen</button>
-    </form>
+    <!-- Buttons nebeneinander -->
+    <div class="button-container">
+        <!-- Clear Button -->
+        <form action="/clear" method="post">
+            <button type="submit">Daten löschen</button>
+        </form>
 
-    <!-- Start Raffle Button -->
-    <form action="/startRaffle" method="post">
-        <button type="submit">Raffle starten</button>
-    </form>
+        <!-- Start Raffle Button -->
+        <form action="/startRaffle" method="post">
+            <button type="submit">Raffle starten</button>
+        </form>
+    </div>
 </body>
 </html>
