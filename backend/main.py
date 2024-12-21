@@ -5,6 +5,7 @@ from fastapi.templating import Jinja2Templates
 from backend.schemas import DeckSchema
 import json
 from pathlib import Path
+#python -m uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 
 # JSON-Datei
 FILE_PATH = Path("raffle.json")
