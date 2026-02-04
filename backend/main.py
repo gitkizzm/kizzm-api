@@ -9,7 +9,7 @@ import hashlib
 import asyncio
 from pathlib import Path
 import pandas as pd
-from random import shuffle, randint
+from random import shuffle, randint, choice
 import time 
 import re 
 from collections import OrderedDict
@@ -81,6 +81,11 @@ FILE_PATH = Path("raffle.json")
 # FastAPI-App erstellen
 app = FastAPI()
 app.mount("/static", StaticFiles(directory="frontend"), name="static")
+
+# Optional: lokale Assets (z.B. assets/backgrounds/*.png)
+_assets_dir = Path("assets")
+if _assets_dir.exists() and _assets_dir.is_dir():
+    app.mount("/assets", StaticFiles(directory="assets"), name="assets")
 
 # Templates für HTML-Seiten
 templates = Jinja2Templates(directory="frontend")
@@ -589,6 +594,28 @@ async def commander_suggest(q: str = ""):
 
 @app.get("/api/background/default")
 async def background_default():
+    """
+    Default Background:
+    - Prefer local PNG from assets/backgrounds/ (random choice)
+    - Fallback: current Scryfall-based default
+    """
+    # 1) Local PNG backgrounds (preferred)
+    bg_dir = Path("assets") / "backgrounds"
+    try:
+        if bg_dir.exists() and bg_dir.is_dir():
+            # case-insensitive *.png
+            pngs = [p for p in bg_dir.iterdir() if p.is_file() and p.suffix.lower() == ".png"]
+            if pngs:
+                picked = choice(pngs)
+                # served via app.mount("/assets", StaticFiles(directory="assets"))
+                return JSONResponse(
+                    {"url": f"/assets/backgrounds/{picked.name}", "zoom": DEFAULT_BG_ZOOM}
+                )
+    except Exception:
+        # any filesystem weirdness -> fall back to Scryfall
+        pass
+
+    # 2) Fallback: Scryfall default (existing logic)
     q = DEFAULT_BG_QUERY
     url = f"{SCRYFALL_BASE}/cards/search?q={quote_plus(q)}&unique=cards&order=name"
 
@@ -603,7 +630,6 @@ async def background_default():
             if total <= 0:
                 return JSONResponse({"url": None, "zoom": DEFAULT_BG_ZOOM})
 
-            # Scryfall search pages are typically up to 175 cards; choose a random page.
             per_page = len(payload.get("data") or [])
             if per_page <= 0:
                 return JSONResponse({"url": None, "zoom": DEFAULT_BG_ZOOM})
@@ -621,7 +647,7 @@ async def background_default():
                 return JSONResponse({"url": None, "zoom": DEFAULT_BG_ZOOM})
 
             card = data[randint(0, len(data) - 1)]
-            img = _get_image_url(card, "art_crop")  # “Rand weg”
+            img = _get_image_url(card, "art_crop")
             return JSONResponse({"url": img, "zoom": DEFAULT_BG_ZOOM})
 
     except Exception:
