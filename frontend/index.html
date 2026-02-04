@@ -4,179 +4,205 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Deck Registrierung</title>
-
-    <style>
-        .suggest-wrap { position: relative; max-width: 520px; }
-        .suggest-box {
-            position: absolute;
-            left: 0;
-            right: 0;
-            top: calc(100% + 4px);
-            z-index: 999;
-            background: white;
-            border: 1px solid #ccc;
-            border-radius: 6px;
-            max-height: 240px;
-            overflow-y: auto;
-            box-shadow: 0 4px 18px rgba(0,0,0,0.12);
-        }
-        .suggest-item {
-            padding: 10px 12px;
-            cursor: pointer;
-        }
-        .suggest-item:hover { background: #f3f3f3; }
-    </style>
+    <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
-    <h1>Deck Registrierung</h1>
+    <div class="glass-card">
+        <h1>Deck Registrierung</h1>
 
-    <!-- Bedingte Anzeige basierend auf deck_id und start_file_exists -->
-    {% if deck_id == 0 %}
-        {% if start_file_exists %}
-        <p style="color: green; font-weight: bold;">
-            Bitte scant jetzt noch mal die Decks, und verteilt Sie wie angegeben.
-        </p>
+        <!-- Bedingte Anzeige basierend auf deck_id und start_file_exists -->
+        {% if deck_id == 0 %}
+            {% if start_file_exists %}
+            <p style="color: green; font-weight: bold;">
+                Bitte scant jetzt noch mal die Decks, und verteilt Sie wie angegeben.
+            </p>
+            {% else %}
+            <p style="color: red; font-weight: bold;">
+                Bitte warte, bis alle Decks registriert wurden.
+            </p>
+            {% endif %}
+        {% elif existing_entry %}
+            {% if start_file_exists %}
+            <h2>Bitte übergebe dieses Deck an {{ deckOwner }}</h2>
+            {% else %}
+            <p style="color: red; font-weight: bold;">
+                Dieses Deck wurde bereits registriert. Bitte warte bis der Raffel startet.
+            </p>
+            {% endif %}
         {% else %}
-        <p style="color: red; font-weight: bold;">
-            Bitte warte, bis alle Decks registriert wurden.
-        </p>
-        {% endif %}
-    {% elif existing_entry %}
-        {% if start_file_exists %}
-        <h2>Bitte übergebe dieses Deck an {{ deckOwner }}</h2>
-        {% else %}
-        <p style="color: red; font-weight: bold;">
-            Dieses Deck wurde bereits registriert. Bitte warte bis der Raffel startet.
-        </p>
-        {% endif %}
-    {% else %}
-        <!-- Fehleranzeige -->
-        {% if error %}
-        <div style="color: red; font-weight: bold;">
-            {{ error }}
-        </div>
-        {% endif %}
-
-        <!-- Formular -->
-        <form action="/submit" method="post">
-            <label for="deckersteller">Name des Deckerstellers:</label>
-            <select id="deckersteller" name="deckersteller" required>
-                <option value="" disabled selected>Wählen Sie einen Namen</option>
-                {% for name in participants %}
-                <option value="{{ name }}" {% if values and values.get('deckersteller') == name %}selected{% endif %}>{{ name }}</option>
-                {% endfor %}
-            </select>
-            <br><br>
-
-            <label for="commander">Name des Commanders (Optional):</label>
-            <div class="suggest-wrap">
-                <input type="text" id="commander" name="commander" autocomplete="off" value="{{ values.commander if values }}">
-                <div id="commanderSuggestBox" class="suggest-box" style="display:none;"></div>
+            <!-- Fehleranzeige -->
+            {% if error %}
+            <div style="color: red; font-weight: bold;">
+                {{ error }}
             </div>
-            <br><br>
+            {% endif %}
 
-            <label for="deckUrl">DeckURL z.B. Moxfield (Optional):</label>
-            <input type="url" id="deckUrl" name="deckUrl" value="{{ values.deckUrl if values }}">
-            <br><br>
+            <!-- Formular -->
+            <form action="/submit" method="post">
+                <label for="deckersteller">Name des Deckerstellers:</label>
+                <select id="deckersteller" name="deckersteller" required>
+                    <option value="" disabled selected>Wählen Sie einen Namen</option>
+                    {% for name in participants %}
+                    <option value="{{ name }}" {% if values and values.get('deckersteller') == name %}selected{% endif %}>{{ name }}</option>
+                    {% endfor %}
+                </select>
+                <br><br>
 
-            <!-- Hidden Input für DeckID -->
-            <input type="hidden" name="deck_id" value="{{ deck_id }}">
+                <label for="commander">Name des Commanders (Optional):</label>
+                <div class="suggest-wrap">
+                    <input type="text" id="commander" name="commander" autocomplete="off"
+                        value="{{ values.commander if values }}" placeholder="z.B. Akroma">
+                    <div id="commanderSuggestBox" class="suggest-box"></div>
+                </div>
+                <br><br>
 
-            <button type="reset">Reset</button>
-            <button type="submit">Send</button>
-        </form>
-    {% endif %}
 
-    <script>
-        (() => {
-        const MIN_CHARS = 3;      // oder 2, wenn du aggressiver willst
-        const DEBOUNCE_MS = 350;
+                <label for="deckUrl">DeckURL z.B. Moxfield (Optional):</label>
+                <input type="url" id="deckUrl" name="deckUrl" value="{{ values.deckUrl if values }}">
+                <br><br>
 
-        const input = document.getElementById("commander");
-        const box = document.getElementById("commanderSuggestBox");
-        if (!input || !box) return;
+                <!-- Hidden Input für DeckID -->
+                <input type="hidden" name="deck_id" value="{{ deck_id }}">
 
-        let timer = null;
-        let lastQuery = "";
-        let inFlight = false;
+                <div class="btn-row">
+                    <button type="reset">Reset</button>
+                    <button type="submit">Send</button>
+                </div>
+            </form>
+        {% endif %}
 
-        function hideBox() {
-            box.style.display = "none";
-            box.innerHTML = "";
-        }
+        <script>
+            (() => {
+            const MIN_CHARS = 3;
+            const DEBOUNCE_MS = 350;
 
-        function escapeHtml(s) {
-            return String(s)
-            .replaceAll("&", "&amp;")
-            .replaceAll("<", "&lt;")
-            .replaceAll(">", "&gt;")
-            .replaceAll('"', "&quot;")
-            .replaceAll("'", "&#039;");
-        }
+            const input = document.getElementById("commander");
+            const box = document.getElementById("commanderSuggestBox");
 
-        function render(names) {
-            if (!names || names.length === 0) {
-            hideBox();
-            return;
-            }
-            box.innerHTML = names
-            .slice(0, 10)
-            .map(n => `<div class="suggest-item" data-name="${escapeHtml(n)}">${escapeHtml(n)}</div>`)
-            .join("");
-            box.style.display = "block";
-        }
-
-        async function fetchSuggest(q) {
-            if (inFlight) return; // simpel: max 1 request gleichzeitig
-            inFlight = true;
-            try {
-            const resp = await fetch(`/api/commander_suggest?q=${encodeURIComponent(q)}`, { cache: "no-store" });
-            if (!resp.ok) { hideBox(); return; }
-
-            const data = await resp.json();
-
-            // Wenn User weitergetippt hat: alte Antwort verwerfen
-            if (q !== lastQuery) return;
-
-            render(data);
-            } catch (e) {
-            hideBox();
-            } finally {
-            inFlight = false;
-            }
-        }
-
-        input.addEventListener("input", () => {
-            const q = input.value.trim();
-            lastQuery = q;
-
-            if (q.length < MIN_CHARS) {
-            hideBox();
-            return;
+            function setBackground(url, zoom){
+                if (url) {
+                document.documentElement.style.setProperty('--bg-image', `url("${url}")`);
+                }
+                if (zoom) {
+                document.documentElement.style.setProperty('--bg-zoom', String(zoom));
+                }
             }
 
-            clearTimeout(timer);
-            timer = setTimeout(() => fetchSuggest(q), DEBOUNCE_MS);
-        });
+            async function loadDefaultBackground(){
+                try{
+                const r = await fetch("/api/background/default", { cache:"no-store" });
+                if(!r.ok) return;
+                const data = await r.json();
+                if(data && data.url){
+                    setBackground(data.url, data.zoom || 1.12);
+                }
+                }catch(_){}
+            }
 
-        box.addEventListener("click", (ev) => {
-            const item = ev.target.closest(".suggest-item");
-            if (!item) return;
-            const name = item.getAttribute("data-name");
-            input.value = name;
-            hideBox();
-        });
+            async function loadCommanderBackground(name){
+                try{
+                const r = await fetch(`/api/background/commander?name=${encodeURIComponent(name)}`, { cache:"no-store" });
+                if(!r.ok) return;
+                const data = await r.json();
+                if(data && data.url){
+                    setBackground(data.url, data.zoom || 1.0);
+                }
+                }catch(_){}
+            }
 
-        document.addEventListener("click", (ev) => {
-            if (ev.target === input || box.contains(ev.target)) return;
-            hideBox();
-        });
+            // initial background: only if no commander preset
+            document.addEventListener("DOMContentLoaded", () => {
+                const current = (input?.value || "").trim();
+                if (!current) loadDefaultBackground();
+                else loadCommanderBackground(current);
+            });
 
-        input.addEventListener("keydown", (ev) => {
-            if (ev.key === "Escape") hideBox();
-        });
-    })();
-    </script>
-    
+            if (!input || !box) return;
+
+            let timer = null;
+            let lastQuery = "";
+            let inFlight = false;
+
+            function hideBox(){
+                box.style.display = "none";
+                box.innerHTML = "";
+            }
+
+            function escapeHtml(s){
+                return String(s)
+                .replaceAll("&","&amp;")
+                .replaceAll("<","&lt;")
+                .replaceAll(">","&gt;")
+                .replaceAll('"',"&quot;")
+                .replaceAll("'","&#039;");
+            }
+
+            function render(names){
+                if(!names || names.length === 0){
+                hideBox();
+                return;
+                }
+                box.innerHTML = names.slice(0,10)
+                .map(n => `<div class="suggest-item" data-name="${escapeHtml(n)}">${escapeHtml(n)}</div>`)
+                .join("");
+                box.style.display = "block";
+            }
+
+            async function fetchSuggest(q){
+                if(inFlight) return;
+                inFlight = true;
+                try{
+                const resp = await fetch(`/api/commander_suggest?q=${encodeURIComponent(q)}`, { cache:"no-store" });
+                if(!resp.ok){ hideBox(); return; }
+                const data = await resp.json();
+                if(q !== lastQuery) return;
+                render(data);
+                }catch(_){
+                hideBox();
+                }finally{
+                inFlight = false;
+                }
+            }
+
+            input.addEventListener("input", () => {
+                const q = input.value.trim();
+                lastQuery = q;
+
+                // Wenn User das Feld leert: wieder default background
+                if (q.length === 0) {
+                hideBox();
+                loadDefaultBackground();
+                return;
+                }
+
+                if(q.length < MIN_CHARS){
+                hideBox();
+                return;
+                }
+                clearTimeout(timer);
+                timer = setTimeout(() => fetchSuggest(q), DEBOUNCE_MS);
+            });
+
+            box.addEventListener("click", (ev) => {
+                const item = ev.target.closest(".suggest-item");
+                if(!item) return;
+                const name = item.getAttribute("data-name");
+                input.value = name;
+                hideBox();
+                loadCommanderBackground(name);
+            });
+
+            document.addEventListener("click", (ev) => {
+                if(ev.target === input || box.contains(ev.target)) return;
+                hideBox();
+            });
+
+            input.addEventListener("keydown", (ev) => {
+                if(ev.key === "Escape") hideBox();
+            });
+            })();
+        </script>
+
+    </div>
 </body>
 </html>

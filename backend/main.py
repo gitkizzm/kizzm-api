@@ -2,11 +2,12 @@ import uvicorn
 from fastapi import FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
 from backend.schemas import DeckSchema
 import json
 from pathlib import Path
 import pandas as pd
-from random import shuffle
+from random import shuffle, randint
 import time 
 import re 
 from collections import OrderedDict
@@ -22,6 +23,16 @@ SCRYFALL_TIMEOUT = 2.0         # Sekunden
 
 CACHE_TTL_SECONDS = 24 * 3600
 CACHE_MAX_ENTRIES = 1000
+
+# Default Background: Snow Basics aus Secret Lair Drop (dein Query)
+DEFAULT_BG_QUERY = 't:basic t:snow e:SLD'
+DEFAULT_BG_ZOOM = 1.12   # <- “Rand weg gecropped” zusätzlich per Zoom (einstellbar)
+COMMANDER_BG_ZOOM = 1.00 # <- kein zusätzlicher Zoom
+
+SCRYFALL_HEADERS = {
+    "Accept": "application/json",
+    "User-Agent": "CommanderRaffle/1.0 (contact: you@example.com)",
+}
 
 _suggest_cache = OrderedDict()  # key -> (timestamp, result_list)
 
@@ -47,11 +58,27 @@ def _cache_set(key: str, value):
     while len(_suggest_cache) > CACHE_MAX_ENTRIES:
         _suggest_cache.popitem(last=False)
 
+def _get_image_url(card: dict, key: str) -> str | None:
+    # key: "art_crop", "border_crop", "large", ...
+    iu = card.get("image_uris")
+    if isinstance(iu, dict) and iu.get(key):
+        return iu[key]
+
+    faces = card.get("card_faces")
+    if isinstance(faces, list) and len(faces) > 0:
+        fu = faces[0].get("image_uris")
+        if isinstance(fu, dict) and fu.get(key):
+            return fu[key]
+
+    return None
+
+
 # JSON-Datei
 FILE_PATH = Path("raffle.json")
 
 # FastAPI-App erstellen
 app = FastAPI()
+app.mount("/static", StaticFiles(directory="frontend"), name="static")
 
 # Templates für HTML-Seiten
 templates = Jinja2Templates(directory="frontend")
@@ -382,6 +409,80 @@ async def commander_suggest(q: str = ""):
         # timeout/network/json issues -> no suggestions
         return JSONResponse([])
 
+@app.get("/api/background/default")
+async def background_default():
+    q = DEFAULT_BG_QUERY
+    url = f"{SCRYFALL_BASE}/cards/search?q={quote_plus(q)}&unique=cards&order=name"
+
+    try:
+        async with httpx.AsyncClient(timeout=SCRYFALL_TIMEOUT, headers=SCRYFALL_HEADERS) as client:
+            first = await client.get(url)
+            if first.status_code != 200:
+                return JSONResponse({"url": None, "zoom": DEFAULT_BG_ZOOM})
+
+            payload = first.json()
+            total = int(payload.get("total_cards") or 0)
+            if total <= 0:
+                return JSONResponse({"url": None, "zoom": DEFAULT_BG_ZOOM})
+
+            # Scryfall search pages are typically up to 175 cards; choose a random page.
+            per_page = len(payload.get("data") or [])
+            if per_page <= 0:
+                return JSONResponse({"url": None, "zoom": DEFAULT_BG_ZOOM})
+
+            max_page = max(1, (total + per_page - 1) // per_page)
+            page = randint(1, max_page)
+
+            page_url = url + f"&page={page}"
+            resp = await client.get(page_url)
+            if resp.status_code != 200:
+                return JSONResponse({"url": None, "zoom": DEFAULT_BG_ZOOM})
+
+            data = (resp.json().get("data") or [])
+            if not data:
+                return JSONResponse({"url": None, "zoom": DEFAULT_BG_ZOOM})
+
+            card = data[randint(0, len(data) - 1)]
+            img = _get_image_url(card, "art_crop")  # “Rand weg”
+            return JSONResponse({"url": img, "zoom": DEFAULT_BG_ZOOM})
+
+    except Exception:
+        return JSONResponse({"url": None, "zoom": DEFAULT_BG_ZOOM})
+
+@app.get("/api/background/commander")
+async def background_commander(name: str = ""):
+    name = (name or "").strip()
+    if not name:
+        return JSONResponse({"url": None, "zoom": COMMANDER_BG_ZOOM})
+
+    # exakt (mit Escape für Quotes)
+    safe = name.replace('"', '\\"')
+    q = f'game:paper is:commander !"{safe}"'
+
+    url = (
+        f"{SCRYFALL_BASE}/cards/search?"
+        f"q={quote_plus(q)}&unique=prints&order=released&dir=desc"
+    )
+
+    try:
+        async with httpx.AsyncClient(timeout=SCRYFALL_TIMEOUT, headers=SCRYFALL_HEADERS) as client:
+            r = await client.get(url)
+            if r.status_code != 200:
+                return JSONResponse({"url": None, "zoom": COMMANDER_BG_ZOOM})
+
+            data = (r.json().get("data") or [])
+            if not data:
+                return JSONResponse({"url": None, "zoom": COMMANDER_BG_ZOOM})
+
+            newest = data[0]
+            img = _get_image_url(newest, "border_crop")
+            # Fallback, falls border_crop fehlt
+            if not img:
+                img = _get_image_url(newest, "large")
+            return JSONResponse({"url": img, "zoom": COMMANDER_BG_ZOOM})
+
+    except Exception:
+        return JSONResponse({"url": None, "zoom": COMMANDER_BG_ZOOM})
 
 
 if __name__ == "__main__":

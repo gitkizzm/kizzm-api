@@ -1,0 +1,226 @@
+/* =========================================================
+   Root variables (werden teilweise per JS überschrieben)
+   ========================================================= */
+:root{
+  --bg-image: none;              /* url("...") via JS */
+  --bg-zoom: 1.12;               /* Default: leicht reinzoomen */
+  --glass: rgba(255,255,255,0.14);
+  --glass-border: rgba(255,255,255,0.22);
+  --text: rgba(255,255,255,0.92);
+  --muted: rgba(255,255,255,0.74);
+  --danger: rgba(255,120,120,0.95);
+  --success: rgba(140,255,170,0.95);
+}
+
+/* =========================================================
+   Page / Background
+   ========================================================= */
+html, body{
+  margin: 0;
+  padding: 0;
+}
+
+body{
+  min-height: 100vh;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  color: var(--text);
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: 24px 14px;
+  background: #0b0f1a;
+  overflow-x: hidden;
+}
+
+/* Background image layer */
+body::before{
+  content: "";
+  position: fixed;
+  inset: -20px; /* bleed for blur edges */
+  background-image: var(--bg-image);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  transform: scale(var(--bg-zoom));
+  filter: blur(14px) saturate(1.05);
+  opacity: 0.92;
+  z-index: -2;
+}
+
+/* Dark overlay for readability */
+body::after{
+  content: "";
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(
+      1200px 700px at 20% 10%,
+      rgba(255,255,255,0.10),
+      transparent 55%
+    ),
+    linear-gradient(
+      to bottom,
+      rgba(0,0,0,0.35),
+      rgba(0,0,0,0.62)
+    );
+  z-index: -1;
+}
+
+/* =========================================================
+   Glass Card
+   ========================================================= */
+.glass-card{
+  width: min(640px, 100%);
+  border-radius: 20px;
+
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+
+  box-shadow: 0 18px 60px rgba(0,0,0,0.45);
+  padding: 22px 18px;
+}
+
+/* =========================================================
+   Typography
+   ========================================================= */
+h1{
+  margin: 4px 0 18px;
+  font-size: 34px;
+  letter-spacing: 0.2px;
+}
+
+/* =========================================================
+   Status messages
+   ========================================================= */
+.status{
+  margin: 0 0 18px;
+  padding: 12px 12px;
+  border-radius: 12px;
+  background: rgba(0,0,0,0.25);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: var(--muted);
+}
+
+.status.danger{
+  color: var(--danger);
+  font-weight: 700;
+}
+
+.status.ok{
+  color: var(--success);
+  font-weight: 700;
+}
+
+/* =========================================================
+   Form elements
+   ========================================================= */
+label{
+  display: block;
+  margin: 14px 0 8px;
+  font-weight: 650;
+}
+
+select,
+input{
+  width: 100%;
+  box-sizing: border-box;
+
+  padding: 12px 12px;
+  border-radius: 12px;
+
+  border: 1px solid rgba(255,255,255,0.22);
+  background: rgba(255,255,255,0.12);
+  color: var(--text);
+
+  outline: none;
+}
+
+/* native select options (browser dropdown) */
+select option{
+  color: #111;
+}
+
+input::placeholder{
+  color: rgba(255,255,255,0.55);
+}
+
+/* =========================================================
+   Layout helpers
+   ========================================================= */
+.row{
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.btn-row{
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 18px;
+}
+
+/* =========================================================
+   Buttons
+   ========================================================= */
+button{
+  border: 1px solid rgba(255,255,255,0.22);
+  background: rgba(255,255,255,0.14);
+  color: var(--text);
+
+  padding: 11px 16px;
+  border-radius: 12px;
+
+  cursor: pointer;
+}
+
+button[type="submit"]{
+  background: rgba(90,140,255,0.35);
+  border-color: rgba(90,140,255,0.55);
+  font-weight: 700;
+}
+
+/* =========================================================
+   Commander autocomplete
+   ========================================================= */
+.suggest-wrap{
+  position: relative;
+}
+
+.suggest-box{
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 6px);
+
+  border-radius: 14px;
+  overflow: hidden;
+
+  background: rgba(20,20,30,0.62);
+  border: 1px solid rgba(255,255,255,0.20);
+
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+
+  box-shadow: 0 14px 40px rgba(0,0,0,0.35);
+
+  display: none;
+  max-height: 240px;
+  overflow-y: auto;
+  z-index: 20;
+}
+
+.suggest-item{
+  padding: 12px 12px;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.suggest-item:hover{
+  background: rgba(255,255,255,0.10);
+}
