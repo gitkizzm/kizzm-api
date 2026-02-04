@@ -604,7 +604,8 @@ async def background_default():
     try:
         if bg_dir.exists() and bg_dir.is_dir():
             # case-insensitive *.png
-            pngs = [p for p in bg_dir.iterdir() if p.is_file() and p.suffix.lower() == ".png"]
+            allowed_ext = {".png", ".webp", ".jpg", ".jpeg"}
+            pngs = [p for p in bg_dir.iterdir() if p.is_file() and p.suffix.lower() in allowed_ext]
             if pngs:
                 picked = choice(pngs)
                 # served via app.mount("/assets", StaticFiles(directory="assets"))
