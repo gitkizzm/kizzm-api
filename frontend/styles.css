@@ -354,12 +354,21 @@ button:not(:disabled):hover{
 .modal{
   width: min(560px, calc(100vw - 28px));
   border-radius: 20px;
-  padding: 18px 16px;
+  padding: 20px 18px;
 
-  background: var(--glass);
-  border: 1px solid var(--glass-border);
+  /* deutlich opaker als normale Glaskarten */
+  background: rgba(30, 30, 30, 0.92);
+  border: 1px solid rgba(255,255,255,0.25);
 
-  box-shadow: 0 18px 60px rgba(0,0,0,0.55);
+  box-shadow:
+    0 20px 70px rgba(0,0,0,0.75),
+    inset 0 1px 0 rgba(255,255,255,0.05);
+}
+
+.modal .status.danger{
+  background: rgba(255, 80, 80, 0.18);
+  border-color: rgba(255, 80, 80, 0.55);
+  font-weight: 700;
 }
 
 .modal h2{
