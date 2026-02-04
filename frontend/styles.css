@@ -273,9 +273,10 @@ button:not(:disabled):hover{
   gap: 8px;
 }
 
-.info-wrap {
+.info-wrap{
   position: relative;
-  display: inline-flex;
+  display: inline-flex;      /* wichtig */
+  margin-left: auto;
 }
 
 .info-btn {
@@ -297,9 +298,6 @@ button:not(:disabled):hover{
   top: 50%;
   right: calc(100% + 10px);   /* links vom Info-Button */
   transform: translateY(-50%);
-
-  min-width: 180px;
-  max-width: 260px;
 
   padding: 10px 12px;
   border-radius: 12px;
