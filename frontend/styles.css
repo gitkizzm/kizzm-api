@@ -357,7 +357,7 @@ button:not(:disabled):hover{
   padding: 22px 20px;
 
   /* klarer, fast „solid“ */
-  background: rgba(22, 22, 22, 0.97);
+  background: rgba(22, 22, 22, 0.37);
   border: 1px solid rgba(255,255,255,0.35);
 
   box-shadow:
