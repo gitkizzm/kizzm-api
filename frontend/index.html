@@ -50,8 +50,9 @@
 
                 <label for="commander">Name des Commanders (Optional):</label>
                 <div class="suggest-wrap">
-                    <input type="text" id="commander" name="commander" autocomplete="off"
+                    <input type="text" id="commander" name="commander" class="commander-input" autocomplete="off"
                         value="{{ values.commander if values }}" placeholder="z.B. Akroma">
+                    <div id="commanderSpinner" class="input-spinner"></div>
                     <div id="commanderSuggestBox" class="suggest-box"></div>
                 </div>
                 <br><br>
@@ -78,6 +79,12 @@
 
             const input = document.getElementById("commander");
             const box = document.getElementById("commanderSuggestBox");
+
+            const spinner = document.getElementById("commanderSpinner");
+            function setLoading(isLoading){
+                if (!spinner) return;
+                spinner.classList.toggle("show", !!isLoading);
+            }
 
             function setBackground(url, zoom){
                 if (url !== undefined && url !== null) {
@@ -149,19 +156,21 @@
             }
 
             async function fetchSuggest(q){
-                if(inFlight) return;
-                inFlight = true;
-                try{
+            if(inFlight) return;
+            inFlight = true;
+            setLoading(true);
+            try{
                 const resp = await fetch(`/api/commander_suggest?q=${encodeURIComponent(q)}`, { cache:"no-store" });
                 if(!resp.ok){ hideBox(); return; }
                 const data = await resp.json();
                 if(q !== lastQuery) return;
                 render(data);
-                }catch(_){
+            }catch(_){
                 hideBox();
-                }finally{
+            }finally{
+                setLoading(false);
                 inFlight = false;
-                }
+            }
             }
 
             input.addEventListener("input", () => {
@@ -170,15 +179,18 @@
 
                 // Wenn User das Feld leert: wieder default background
                 if (q.length === 0) {
-                hideBox();
-                loadDefaultBackground();
-                return;
+                    setLoading(false);
+                    hideBox();
+                    loadDefaultBackground();
+                    return;
                 }
 
                 if(q.length < MIN_CHARS){
-                hideBox();
-                return;
+                    setLoading(false);
+                    hideBox();
+                    return;
                 }
+
                 clearTimeout(timer);
                 timer = setTimeout(() => fetchSuggest(q), DEBOUNCE_MS);
             });
