@@ -330,21 +330,17 @@ button:not(:disabled):hover{
    ========================================================= */
 .modal-overlay{
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100vw;
-  height: 100vh;
+  inset: 0;
 
   display: none;
   align-items: center;
   justify-content: center;
   padding: 18px;
 
-  /* wirklich über ALLEM */
   z-index: 9999;
 
-  /* dunkler & weniger Glas, damit klarer Kontrast */
-  background: rgba(0,0,0,0.70);
+  /* Vollbild-Dimmer */
+  background: rgba(0,0,0,0.75);
 }
 
 .modal-overlay.show{
@@ -356,7 +352,6 @@ button:not(:disabled):hover{
   border-radius: 20px;
   padding: 20px 18px;
 
-  /* deutlich opaker als normale Glaskarten */
   background: rgba(30, 30, 30, 0.92);
   border: 1px solid rgba(255,255,255,0.25);
 
