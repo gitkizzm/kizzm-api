@@ -8,7 +8,13 @@
 </head>
 <body>
     <div class="glass-card">
-        <h1>Deck Registrierung</h1>
+        <h1>
+            {% if start_file_exists %}
+                Deck Verteilung
+            {% else %}
+                Deck Registrierung
+            {% endif %}
+        </h1>
 
         <!-- Bedingte Anzeige basierend auf deck_id und start_file_exists -->
         {% if deck_id == 0 %}
@@ -23,10 +29,12 @@
             {% endif %}
         {% elif existing_entry %}
             {% if start_file_exists %}
-            <h2>Bitte übergebe dieses Deck an {{ deckOwner }}</h2>
+            <p class="status ok">
+                Bitte übergebe dieses Deck an {{ deckOwner }}
+            </p>
             {% else %}
             <p class="status danger">
-                Dieses Deck wurde bereits registriert. Bitte warte bis der Raffel startet.
+                Dieses Deck wurde bereits registriert. Bitte warte bis der Raffle startet.
             </p>
             {% endif %}
         {% else %}
