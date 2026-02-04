@@ -2,65 +2,67 @@
 <html lang="de">
 <head>
     <meta charset="UTF-8">
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>CustomerControlPanel</title>
-                <link rel="stylesheet" href="/static/styles.css">
-                </head>
-                <body>
-                <div class="glass-card">
-                    <h1>Control Panel</h1>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CustomerControlPanel</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="glass-card">
+        <h1>Control Panel</h1>
 
-                        {% if start_file_exists %}
-                                <div class="status ok">Der Raffle ist gestartet</div>
-                                    {% else %}
-                                            <div class="status danger">Die Deckregistrierung läuft noch</div>
-                                                {% endif %}
+        {% if start_file_exists %}
+            <div class="status ok">Der Raffle ist gestartet</div>
+        {% else %}
+            <div class="status danger">Die Deckregistrierung läuft noch</div>
+        {% endif %}
 
-                                                    {% if deck_count > 0 %}
-                                                            <div class="status">Es sind {{ deck_count }} unterschiedliche Decks registriert.</div>
-                                                                {% else %}
-                                                                        {% if deck_count == 0 %}
-                                                                                    <div class="status danger">Es sind noch keine Decks eingetragen.</div>
-                                                                                            {% else %}
-                                                                                                        <div class="status danger">Die Datei raffle.json existiert nicht.</div>
-                                                                                                                {% endif %}
-                                                                                                                    {% endif %}
+        {% if deck_count > 0 %}
+            <div class="status">Es sind {{ deck_count }} unterschiedliche Decks registriert.</div>
+        {% else %}
+            {% if deck_count == 0 %}
+                <div class="status danger">Es sind noch keine Decks eingetragen.</div>
+            {% else %}
+                <div class="status danger">Die Datei raffle.json existiert nicht.</div>
+            {% endif %}
+        {% endif %}
 
-                                                                                                                        <div class="btn-row" style="justify-content: space-between;">
-                                                                                                                                <form action="/clear" method="post" style="margin:0;">
-                                                                                                                                            <button type="submit">Daten löschen</button>
-                                                                                                                                                    </form>
+        <div class="btn-row" style="justify-content: space-between;">
+            <form action="/clear" method="post" style="margin:0;">
+                <button type="submit">Daten löschen</button>
+            </form>
 
-                                                                                                                                                            <form action="/startRaffle" method="post" style="margin:0;">
-                                                                                                                                                                        <button type="submit">Raffle starten</button>
-                                                                                                                                                                                </form>
-                                                                                                                                                                                    </div>
-                                                                                                                                                                                    </div>
+            <form action="/startRaffle" method="post" style="margin:0;">
+                <button type="submit" {% if deck_count < 3 %}disabled{% endif %}>
+                    Raffle starten
+                </button>
+            </form>
+        </div>
+    </div>
 
-                                                                                                                                                                                    <script>
-                                                                                                                                                                                    (() => {
-                                                                                                                                                                                      function setBackground(url, zoom){
-                                                                                                                                                                                          if (url !== undefined && url !== null) {
-                                                                                                                                                                                                document.documentElement.style.setProperty('--bg-image', `url("${url}")`);
-                                                                                                                                                                                                    }
-                                                                                                                                                                                                        if (zoom !== undefined && zoom !== null) {
-                                                                                                                                                                                                              document.documentElement.style.setProperty('--bg-zoom', String(zoom));
-                                                                                                                                                                                                                  }
-                                                                                                                                                                                                                    }
+    <script>
+        (() => {
+            function setBackground(url, zoom){
+                if (url !== undefined && url !== null) {
+                    document.documentElement.style.setProperty('--bg-image', `url("${url}")`);
+                }
+                if (zoom !== undefined && zoom !== null) {
+                    document.documentElement.style.setProperty('--bg-zoom', String(zoom));
+                }
+            }
 
-                                                                                                                                                                                                                      async function loadDefaultBackground(){
-                                                                                                                                                                                                                          try{
-                                                                                                                                                                                                                                const r = await fetch("/api/background/default", { cache:"no-store" });
-                                                                                                                                                                                                                                      if(!r.ok) return;
-                                                                                                                                                                                                                                            const data = await r.json();
-                                                                                                                                                                                                                                                  if(data && data.url){
-                                                                                                                                                                                                                                                          setBackground(data.url, data.zoom || 1.12);
-                                                                                                                                                                                                                                                                }
-                                                                                                                                                                                                                                                                    }catch(_){}
-                                                                                                                                                                                                                                                                      }
+            async function loadDefaultBackground(){
+                try{
+                    const r = await fetch("/api/background/default", { cache:"no-store" });
+                    if(!r.ok) return;
+                    const data = await r.json();
+                    if(data && data.url){
+                        setBackground(data.url, data.zoom || 1.12);
+                    }
+                }catch(_){}
+            }
 
-                                                                                                                                                                                                                                                                        document.addEventListener("DOMContentLoaded", loadDefaultBackground);
-                                                                                                                                                                                                                                                                        })();
-                                                                                                                                                                                                                                                                        </script>
-                                                                                                                                                                                                                                                                        </body>
-                                                                                                                                                                                                                                                                        </html>
+            document.addEventListener("DOMContentLoaded", loadDefaultBackground);
+        })();
+    </script>
+</body>
+</html>

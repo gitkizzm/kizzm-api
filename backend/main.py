@@ -285,7 +285,14 @@ async def start_raffle():
             except (json.JSONDecodeError, ValueError):
                 # Fehler beim Einlesen von raffle.json
                 raise HTTPException(status_code=500, detail="Fehler beim Einlesen der raffle.json-Datei.")
-        cOrder, gOrder=shuffle_decks( deckersteller_list )
+                # Mindestanzahl Decks prüfen
+        unique_decks = list(dict.fromkeys(deckersteller_list))  # dedupe, Reihenfolge egal
+        if len(unique_decks) < 3:
+            raise HTTPException(
+                status_code=400,
+                detail="Raffle kann erst ab 3 registrierten Decks gestartet werden."
+            )
+        cOrder, gOrder=shuffle_decks( unique_decks )
         for creator, new_owner in zip( cOrder, gOrder ):
             update_deck_owner( creator, new_owner )
 
