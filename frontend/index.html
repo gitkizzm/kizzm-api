@@ -80,11 +80,11 @@
             const box = document.getElementById("commanderSuggestBox");
 
             function setBackground(url, zoom){
-                if (url) {
-                document.documentElement.style.setProperty('--bg-image', `url("${url}")`);
+                if (url !== undefined && url !== null) {
+                    document.documentElement.style.setProperty('--bg-image', `url("${url}")`);
                 }
-                if (zoom) {
-                document.documentElement.style.setProperty('--bg-zoom', String(zoom));
+                if (zoom !== undefined && zoom !== null) {
+                    document.documentElement.style.setProperty('--bg-zoom', String(zoom));
                 }
             }
 
