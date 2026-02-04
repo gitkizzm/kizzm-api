@@ -189,7 +189,7 @@ button:disabled{
 }
 
 button:not(:disabled):hover{
-  background: rgba(90,140,255,0.45);
+  background: rgba(107, 191, 224, 0.75);
 }
 
 /* =========================================================
