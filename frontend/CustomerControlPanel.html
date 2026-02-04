@@ -78,6 +78,37 @@
             }
 
             document.addEventListener("DOMContentLoaded", loadDefaultBackground);
+
+            // --- WebSocket live reload (CCP) ---
+            function wsUrl(params){
+                const proto = (location.protocol === "https:") ? "wss" : "ws";
+                return `${proto}://${location.host}/ws?${params}`;
+            }
+
+            function connectWS(){
+                const ws = new WebSocket(wsUrl("channel=ccp"));
+                ws.onmessage = (ev) => {
+                    try{
+                        const msg = JSON.parse(ev.data);
+                        if(msg.type === "state_changed" && msg.scope === "global"){
+                            location.reload();
+                        }
+                    }catch(_){}
+                };
+                ws.onopen = () => {
+                    // keepalive ping (some hosts/proxies close idle WS)
+                    setInterval(() => {
+                        if(ws.readyState === 1) ws.send("ping");
+                    }, 25000);
+                };
+                ws.onclose = () => {
+                    // reconnect
+                    setTimeout(connectWS, 1000);
+                };
+            }
+
+            document.addEventListener("DOMContentLoaded", connectWS);
+
         })();
     </script>
 </body>

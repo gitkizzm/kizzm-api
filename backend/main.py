@@ -1,10 +1,12 @@
 import uvicorn
-from fastapi import FastAPI, Form, HTTPException, Request
+from fastapi import FastAPI, Form, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from fastapi.staticfiles import StaticFiles
 from backend.schemas import DeckSchema
 import json
+import hashlib
+import asyncio
 from pathlib import Path
 import pandas as pd
 from random import shuffle, randint
@@ -83,6 +85,142 @@ app.mount("/static", StaticFiles(directory="frontend"), name="static")
 # Templates für HTML-Seiten
 templates = Jinja2Templates(directory="frontend")
 
+# =========================================================
+# WebSocket live updates (no polling)
+# =========================================================
+
+class WSManager:
+    """
+    Groups:
+      - "ccp"  : Customer Control Panel (reload on any relevant change)
+      - "home" : "/" (reload on any relevant change)
+      - "deck:<id>" : "/?deck_id=<id>" (reload only if that deck's state changes)
+    """
+    def __init__(self):
+        self.groups: dict[str, set[WebSocket]] = {
+            "ccp": set(),
+            "home": set(),
+            # "deck:<id>": set()
+        }
+
+    async def connect(self, ws: WebSocket, group: str):
+        await ws.accept()
+        if group not in self.groups:
+            self.groups[group] = set()
+        self.groups[group].add(ws)
+
+    def disconnect(self, ws: WebSocket, group: str):
+        if group in self.groups:
+            self.groups[group].discard(ws)
+            # optional cleanup empty deck groups
+            if group.startswith("deck:") and len(self.groups[group]) == 0:
+                self.groups.pop(group, None)
+
+    def active_deck_ids(self) -> set[int]:
+        ids = set()
+        for k in self.groups.keys():
+            if k.startswith("deck:"):
+                try:
+                    ids.add(int(k.split(":", 1)[1]))
+                except ValueError:
+                    pass
+        return ids
+
+    async def broadcast_group(self, group: str, payload: dict):
+        conns = list(self.groups.get(group, set()))
+        if not conns:
+            return
+        dead = []
+        for ws in conns:
+            try:
+                await ws.send_json(payload)
+            except Exception:
+                dead.append(ws)
+        # remove dead sockets
+        for ws in dead:
+            self.groups.get(group, set()).discard(ws)
+
+ws_manager = WSManager()
+
+_last_global_sig: str | None = None
+_last_deck_sig: dict[int, str] = {}
+
+def _load_raffle_list() -> list[dict]:
+    if not FILE_PATH.exists():
+        return []
+    try:
+        with FILE_PATH.open("r", encoding="utf-8") as f:
+            content = json.load(f)
+            if isinstance(content, list):
+                return content
+            if isinstance(content, dict):
+                return [content]
+    except (json.JSONDecodeError, ValueError):
+        pass
+    return []
+
+def _global_signature(start_file_exists: bool, raffle_list: list[dict]) -> str:
+    deck_ids = {e.get("deck_id") for e in raffle_list if "deck_id" in e}
+    obj = {
+        "start_file_exists": start_file_exists,
+        "deck_count": len(deck_ids),
+        # optional: could add more global UI-relevant fields
+    }
+    return hashlib.sha1(json.dumps(obj, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+
+def _deck_signature(deck_id: int, start_file_exists: bool, raffle_list: list[dict]) -> str:
+    entry = None
+    for e in raffle_list:
+        if e.get("deck_id") == deck_id:
+            entry = e
+            break
+
+    registered = entry is not None
+    deck_owner = entry.get("deckOwner") if entry else None
+
+    # This captures exactly what can change the rendered page for that deck_id:
+    # - raffle started or not
+    # - whether this deck_id is registered
+    # - who the deckOwner is (after start)
+    obj = {
+        "deck_id": deck_id,
+        "start_file_exists": start_file_exists,
+        "registered": registered,
+        "deckOwner": deck_owner,
+    }
+    return hashlib.sha1(json.dumps(obj, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+
+async def notify_state_change():
+    """
+    Called after any write to raffle.json or start.txt.
+    Sends WS events only to groups whose signature changed.
+    """
+    global _last_global_sig, _last_deck_sig
+
+    start_file_exists = Path("start.txt").exists()
+    raffle_list = _load_raffle_list()
+
+    # global (CCP + home)
+    gsig = _global_signature(start_file_exists, raffle_list)
+    if _last_global_sig is None:
+        _last_global_sig = gsig
+    elif gsig != _last_global_sig:
+        _last_global_sig = gsig
+        payload = {"type": "state_changed", "scope": "global", "signature": gsig}
+        await ws_manager.broadcast_group("ccp", payload)
+        await ws_manager.broadcast_group("home", payload)
+
+    # per connected deck_id
+    for did in ws_manager.active_deck_ids():
+        dsig = _deck_signature(did, start_file_exists, raffle_list)
+        prev = _last_deck_sig.get(did)
+        if prev is None:
+            _last_deck_sig[did] = dsig
+            continue
+        if dsig != prev:
+            _last_deck_sig[did] = dsig
+            payload = {"type": "state_changed", "scope": "deck", "deck_id": did, "signature": dsig}
+            await ws_manager.broadcast_group(f"deck:{did}", payload)
 
 @app.get("/", response_class=HTMLResponse)
 async def get_form(request: Request, deck_id: int = 0):
@@ -218,8 +356,11 @@ async def submit_form(
         with FILE_PATH.open("w", encoding="utf-8") as f:
             json.dump(data_list, f, ensure_ascii=False, indent=4)
         
+        await notify_state_change()
+
         # Erfolgsseite anzeigen
         return RedirectResponse(url="/success", status_code=303)
+    
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Fehler beim Speichern der Daten: {e}")
 
@@ -247,8 +388,12 @@ async def clear_data():
         # Erstellen einer leeren raffle.json
         with FILE_PATH.open("w", encoding="utf-8") as f:
             json.dump([], f, ensure_ascii=False, indent=4)
+
+        await notify_state_change()
+
         # Weiterleitung zurück zum Customer Control Panel
         return RedirectResponse(url="/CCP", status_code=303)
+    
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Fehler beim Löschen der Dateien: {e}")
 
@@ -319,6 +464,8 @@ async def start_raffle():
         cOrder, gOrder=shuffle_decks( unique_decks )
         for creator, new_owner in zip( cOrder, gOrder ):
             update_deck_owner( creator, new_owner )
+
+        await notify_state_change()
 
         return RedirectResponse(url="/CCP", status_code=303)
     except Exception as e:
@@ -515,6 +662,55 @@ async def background_commander(name: str = ""):
     except Exception:
         return JSONResponse({"url": None, "zoom": COMMANDER_BG_ZOOM})
 
+    @app.websocket("/ws")
+    async def ws_endpoint(websocket: WebSocket):
+        """
+        Client connects with:
+        - /ws?channel=ccp
+        - /ws?channel=home
+        - /ws?deck_id=<int>
+        """
+        q = websocket.query_params
+        channel = (q.get("channel") or "").strip().lower()
+        deck_id_raw = (q.get("deck_id") or "").strip()
+
+        group = "home"
+        deck_id = None
+
+        if channel == "ccp":
+            group = "ccp"
+        elif channel == "home":
+            group = "home"
+        elif deck_id_raw:
+            try:
+                deck_id = int(deck_id_raw)
+                group = f"deck:{deck_id}"
+            except ValueError:
+                group = "home"
+
+        await ws_manager.connect(websocket, group)
+
+        # send initial signature (so client has a baseline)
+        try:
+            start_file_exists = Path("start.txt").exists()
+            raffle_list = _load_raffle_list()
+            if group in ("ccp", "home"):
+                sig = _global_signature(start_file_exists, raffle_list)
+                await websocket.send_json({"type": "hello", "scope": "global", "signature": sig})
+            else:
+                sig = _deck_signature(deck_id, start_file_exists, raffle_list)  # deck_id is int here
+                await websocket.send_json({"type": "hello", "scope": "deck", "deck_id": deck_id, "signature": sig})
+
+            # keep connection alive; clients send "ping"
+            while True:
+                msg = await websocket.receive_text()
+                if msg == "ping":
+                    await websocket.send_text("pong")
+
+        except WebSocketDisconnect:
+            pass
+        finally:
+            ws_manager.disconnect(websocket, group)
 
 if __name__ == "__main__":
     uvicorn.run('main:app', port=8080, host="0.0.0.0", reload=True)
