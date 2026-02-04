@@ -40,18 +40,31 @@
         {% endif %}
 
         <div class="btn-row" style="justify-content: space-between;">
-            <form action="/clear" method="post" style="margin:0;">
-                <button type="submit">Daten löschen</button>
+            <!-- echte Clear-Action: wird nur per Confirm im Modal abgeschickt -->
+            <form id="clearForm" action="/clear" method="post" style="margin:0;">
+                <button type="button" id="openClearModal">Daten löschen</button>
             </form>
 
             <form action="/startRaffle" method="post" style="margin:0;">
-                <button
-                    type="submit"
-                    {% if deck_count < 3 or start_file_exists %}disabled{% endif %}
-                >
+                <button type="submit" {% if deck_count < 3 or start_file_exists %}disabled{% endif %}>
                     Raffle starten
                 </button>
             </form>
+        </div>
+
+        <!-- Confirm Modal -->
+        <div class="modal-overlay" id="clearModal" aria-hidden="true">
+            <div class="modal" role="dialog" aria-modal="true" aria-labelledby="clearModalTitle">
+                <h2 id="clearModalTitle">Wirklich löschen?</h2>
+                <p class="status danger" style="margin-top: 10px;">
+                    Achtung: Dadurch werden die aktuellen Registrierungsdaten gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.
+                </p>
+
+                <div class="modal-actions">
+                    <button type="button" class="btn-ghost" id="cancelClear">Abbrechen</button>
+                    <button type="button" class="btn-danger" id="confirmClear">Ja, löschen</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -108,6 +121,48 @@
             }
 
             document.addEventListener("DOMContentLoaded", connectWS);
+
+            // ----- Clear confirm modal -----
+            const modal = document.getElementById("clearModal");
+            const openBtn = document.getElementById("openClearModal");
+            const cancelBtn = document.getElementById("cancelClear");
+            const confirmBtn = document.getElementById("confirmClear");
+            const clearForm = document.getElementById("clearForm");
+
+            function openModal(){
+                if(!modal) return;
+                modal.classList.add("show");
+                modal.setAttribute("aria-hidden", "false");
+                // Fokus auf Abbrechen als "safe default"
+                cancelBtn?.focus();
+            }
+
+            function closeModal(){
+                if(!modal) return;
+                modal.classList.remove("show");
+                modal.setAttribute("aria-hidden", "true");
+                openBtn?.focus();
+            }
+
+            openBtn?.addEventListener("click", openModal);
+            cancelBtn?.addEventListener("click", closeModal);
+
+            // Klick auf Overlay schließt (nicht beim Klick in der Box)
+            modal?.addEventListener("click", (e) => {
+                if(e.target === modal) closeModal();
+            });
+
+            // ESC schließt
+            document.addEventListener("keydown", (e) => {
+                if(e.key === "Escape" && modal?.classList.contains("show")){
+                    closeModal();
+                }
+            });
+
+            confirmBtn?.addEventListener("click", () => {
+                // Jetzt erst wirklich submitten
+                clearForm?.submit();
+            });
 
         })();
     </script>
