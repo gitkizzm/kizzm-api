@@ -17,7 +17,7 @@ import httpx
 # --- Scryfall commander suggest config ---
 SCRYFALL_BASE = "https://api.scryfall.com"
 SUGGEST_MIN_CHARS = 3          # 2 oder 3 – du wolltest 2–3; Default: 3
-SUGGEST_LIMIT = 10             # Smartphone-freundlich
+SUGGEST_LIMIT = 15             # Smartphone-freundlich
 SCRYFALL_TIMEOUT = 2.0         # Sekunden
 
 CACHE_TTL_SECONDS = 24 * 3600
