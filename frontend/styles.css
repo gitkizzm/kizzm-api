@@ -294,8 +294,9 @@ button:not(:disabled):hover{
 
 .info-tooltip {
   position: absolute;
-  top: calc(100% + 8px);
-  left: 0;
+  top: 50%;
+  right: calc(100% + 10px);   /* links vom Info-Button */
+  transform: translateY(-50%);
 
   min-width: 180px;
   max-width: 260px;
@@ -314,6 +315,7 @@ button:not(:disabled):hover{
   display: none;
   z-index: 50;
 }
+
 
 .tooltip-item {
   padding: 2px 0;
