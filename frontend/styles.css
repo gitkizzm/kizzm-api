@@ -44,7 +44,7 @@ body::before{
   background-position: center;
   background-repeat: no-repeat;
   transform: scale(var(--bg-zoom));
-  filter: blur(14px) saturate(1.05);
+  filter: blur(2px) saturate(1.05);
   opacity: 0.92;
   z-index: -2;
 }
