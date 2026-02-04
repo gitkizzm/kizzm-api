@@ -330,17 +330,21 @@ button:not(:disabled):hover{
    ========================================================= */
 .modal-overlay{
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+
   display: none;
   align-items: center;
   justify-content: center;
   padding: 18px;
 
-  background: rgba(0,0,0,0.55);
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
+  /* wirklich über ALLEM */
+  z-index: 9999;
 
-  z-index: 1000;
+  /* dunkler & weniger Glas, damit klarer Kontrast */
+  background: rgba(0,0,0,0.70);
 }
 
 .modal-overlay.show{
