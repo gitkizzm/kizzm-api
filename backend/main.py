@@ -99,21 +99,39 @@ async def get_form(request: Request, deck_id: int = 0):
     # Status von start.txt prüfen
     start_file_exists = Path("start.txt").exists()
 
-    # Prüfen, ob raffle.json existiert und die deck_id enthalten ist
+        # Prüfen, ob raffle.json existiert und die deck_id enthalten ist
     existing_entry = None
     deckOwner = None
+
     if FILE_PATH.exists():
         try:
             with FILE_PATH.open("r", encoding="utf-8") as f:
                 content = json.load(f)
-                if isinstance(content, list):  # Wenn raffle.json eine Liste ist
+                if isinstance(content, list):
                     for entry in content:
                         if entry.get("deck_id") == deck_id:
                             existing_entry = entry
-                            deckOwner = entry.get("deckOwner")  # Wert für deckOwner laden
+                            deckOwner = entry.get("deckOwner")
                             break
         except (json.JSONDecodeError, ValueError):
             pass
+
+    # 🔴 NEU: Raffle gestartet, aber Deck ID nicht registriert
+    if start_file_exists and deck_id != 0 and existing_entry is None:
+        return templates.TemplateResponse(
+            "index.html",
+            {
+                "request": request,
+                "deck_id": deck_id,
+                "start_file_exists": start_file_exists,
+                "error": (
+                    "Der Raffle wurde schon gestartet, "
+                    "diese Deck ID wurde aber nicht registriert. "
+                    "Bitte sprich mit dem Host."
+                ),
+                "participants": [],
+            }
+        )
 
     return templates.TemplateResponse(
         "index.html",
