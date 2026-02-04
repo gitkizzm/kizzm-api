@@ -239,17 +239,22 @@ async def customer_control_panel(request: Request):
     """
     Zeigt die Customer Control Panel Seite an, überprüft den Status von start.txt und raffle.json.
     """
-    # Prüfen, ob start.txt existiert
     start_file_exists = Path("start.txt").exists()
 
-    # Prüfen, ob raffle.json existiert und Anzahl der DeckIDs ermitteln
     deck_count = -1
+    deckersteller = []
+
     if FILE_PATH.exists():
         try:
             with FILE_PATH.open("r", encoding="utf-8") as f:
                 content = json.load(f)
                 if isinstance(content, list):
-                    deck_count = len({entry.get("deck_id") for entry in content if "deck_id" in entry})
+                    deckersteller = sorted({
+                        entry.get("deckersteller")
+                        for entry in content
+                        if entry.get("deckersteller")
+                    })
+                    deck_count = len(deckersteller)
         except (json.JSONDecodeError, ValueError):
             pass
 
@@ -259,6 +264,7 @@ async def customer_control_panel(request: Request):
             "request": request,
             "start_file_exists": start_file_exists,
             "deck_count": deck_count,
+            "deckersteller": deckersteller,
         }
     )
 

@@ -17,7 +17,20 @@
         {% endif %}
 
         {% if deck_count > 0 %}
-            <div class="status">Es sind {{ deck_count }} unterschiedliche Decks registriert.</div>
+            <div class="status status-inline">
+                Es sind {{ deck_count }} unterschiedliche Decks registriert.
+
+                {% if deck_count > 0 %}
+                <span class="info-wrap">
+                    <button type="button" class="info-btn" aria-label="Info">i</button>
+                    <div class="info-tooltip">
+                        {% for name in deckersteller %}
+                            <div class="tooltip-item">{{ name }}</div>
+                        {% endfor %}
+                    </div>
+                </span>
+                {% endif %}
+            </div>
         {% else %}
             {% if deck_count == 0 %}
                 <div class="status danger">Es sind noch keine Decks eingetragen.</div>

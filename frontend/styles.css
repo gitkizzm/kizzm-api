@@ -262,3 +262,65 @@ button:not(:disabled):hover{
 @keyframes spin {
   to { transform: translateY(-50%) rotate(360deg); }
 }
+
+/* =========================================================
+   CCP Info Tooltip
+   ========================================================= */
+
+.status-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.info-wrap {
+  position: relative;
+  display: inline-flex;
+}
+
+.info-btn {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.35);
+  background: rgba(255,255,255,0.18);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+}
+
+.info-tooltip {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+
+  min-width: 180px;
+  max-width: 260px;
+
+  padding: 10px 12px;
+  border-radius: 12px;
+
+  background: rgba(20,20,30,0.75);
+  border: 1px solid rgba(255,255,255,0.22);
+
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+
+  box-shadow: 0 12px 40px rgba(0,0,0,0.45);
+
+  display: none;
+  z-index: 50;
+}
+
+.tooltip-item {
+  padding: 2px 0;
+  white-space: nowrap;
+}
+
+.info-wrap:hover .info-tooltip,
+.info-wrap:focus-within .info-tooltip {
+  display: block;
+}
