@@ -103,11 +103,11 @@ class WSManager:
             # "deck:<id>": set()
         }
 
-    async def connect(self, ws: WebSocket, group: str):
-        await ws.accept()
+    def connect_existing(self, ws: WebSocket, group: str):
         if group not in self.groups:
             self.groups[group] = set()
         self.groups[group].add(ws)
+
 
     def disconnect(self, ws: WebSocket, group: str):
         if group in self.groups:
@@ -662,55 +662,63 @@ async def background_commander(name: str = ""):
     except Exception:
         return JSONResponse({"url": None, "zoom": COMMANDER_BG_ZOOM})
 
-    @app.websocket("/ws")
-    async def ws_endpoint(websocket: WebSocket):
-        """
-        Client connects with:
-        - /ws?channel=ccp
-        - /ws?channel=home
-        - /ws?deck_id=<int>
-        """
-        q = websocket.query_params
-        channel = (q.get("channel") or "").strip().lower()
-        deck_id_raw = (q.get("deck_id") or "").strip()
+@app.websocket("/ws")
+async def ws_endpoint(websocket: WebSocket):
+    """
+    Client connects with:
+      - /ws?channel=ccp
+      - /ws?channel=home
+      - /ws?deck_id=<int>
+    IMPORTANT: accept() MUST happen before any other logic, otherwise Starlette returns 403.
+    """
+    await websocket.accept()  # <- CRITICAL: accept immediately
 
+    # Now it's safe to parse params / assign groups without risking 403.
+    q = websocket.query_params
+    channel = (q.get("channel") or "").strip().lower()
+    deck_id_raw = (q.get("deck_id") or "").strip()
+
+    group = "home"
+    deck_id = None
+
+    if channel == "ccp":
+        group = "ccp"
+    elif channel == "home":
         group = "home"
-        deck_id = None
-
-        if channel == "ccp":
-            group = "ccp"
-        elif channel == "home":
-            group = "home"
-        elif deck_id_raw:
-            try:
-                deck_id = int(deck_id_raw)
-                group = f"deck:{deck_id}"
-            except ValueError:
-                group = "home"
-
-        await ws_manager.connect(websocket, group)
-
-        # send initial signature (so client has a baseline)
+    elif deck_id_raw:
         try:
-            start_file_exists = Path("start.txt").exists()
-            raffle_list = _load_raffle_list()
-            if group in ("ccp", "home"):
-                sig = _global_signature(start_file_exists, raffle_list)
-                await websocket.send_json({"type": "hello", "scope": "global", "signature": sig})
-            else:
-                sig = _deck_signature(deck_id, start_file_exists, raffle_list)  # deck_id is int here
-                await websocket.send_json({"type": "hello", "scope": "deck", "deck_id": deck_id, "signature": sig})
+            deck_id = int(deck_id_raw)
+            group = f"deck:{deck_id}"
+        except ValueError:
+            group = "home"
 
-            # keep connection alive; clients send "ping"
-            while True:
-                msg = await websocket.receive_text()
-                if msg == "ping":
-                    await websocket.send_text("pong")
+    # register socket into group (NO accept here!)
+    ws_manager.connect_existing(websocket, group)
 
-        except WebSocketDisconnect:
-            pass
-        finally:
-            ws_manager.disconnect(websocket, group)
+    # send initial signature (baseline)
+    try:
+        start_file_exists = Path("start.txt").exists()
+        raffle_list = _load_raffle_list()
+
+        if group in ("ccp", "home"):
+            sig = _global_signature(start_file_exists, raffle_list)
+            await websocket.send_json({"type": "hello", "scope": "global", "signature": sig})
+        else:
+            sig = _deck_signature(deck_id, start_file_exists, raffle_list)  # deck_id is int
+            await websocket.send_json({"type": "hello", "scope": "deck", "deck_id": deck_id, "signature": sig})
+
+        while True:
+            msg = await websocket.receive_text()
+            if msg == "ping":
+                await websocket.send_text("pong")
+
+    except WebSocketDisconnect:
+        pass
+    except Exception:
+        # keep it quiet; optionally log
+        pass
+    finally:
+        ws_manager.disconnect(websocket, group)
 
 if __name__ == "__main__":
     uvicorn.run('main:app', port=8080, host="0.0.0.0", reload=True)
