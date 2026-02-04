@@ -3,7 +3,7 @@
 Dieses Projekt registriert Decks und speichert die Daten in einer JSON-Datei.
 
 ## Features
-- Dropdown-Auswahl für Decksteller
+- Dropdown-Auswahl für Deckersteller
 - Textfelder für Commander und Deck-URL
 - Daten werden in `raffle.json` gespeichert
 - Erfolgsseite nach Registrierung
