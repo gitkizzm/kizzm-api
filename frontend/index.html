@@ -13,11 +13,11 @@
         <!-- Bedingte Anzeige basierend auf deck_id und start_file_exists -->
         {% if deck_id == 0 %}
             {% if start_file_exists %}
-            <p style="color: green; font-weight: bold;">
+            <p class="status ok">
                 Bitte scant jetzt noch mal die Decks, und verteilt Sie wie angegeben.
             </p>
             {% else %}
-            <p style="color: red; font-weight: bold;">
+            <p class="status danger">
                 Bitte warte, bis alle Decks registriert wurden.
             </p>
             {% endif %}
@@ -25,14 +25,14 @@
             {% if start_file_exists %}
             <h2>Bitte übergebe dieses Deck an {{ deckOwner }}</h2>
             {% else %}
-            <p style="color: red; font-weight: bold;">
+            <p class="status danger">
                 Dieses Deck wurde bereits registriert. Bitte warte bis der Raffel startet.
             </p>
             {% endif %}
         {% else %}
             <!-- Fehleranzeige -->
             {% if error %}
-            <div style="color: red; font-weight: bold;">
+            <div class="status danger">
                 {{ error }}
             </div>
             {% endif %}
