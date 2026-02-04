@@ -45,7 +45,10 @@
             </form>
 
             <form action="/startRaffle" method="post" style="margin:0;">
-                <button type="submit" {% if deck_count < 3 %}disabled{% endif %}>
+                <button
+                    type="submit"
+                    {% if deck_count < 3 or start_file_exists %}disabled{% endif %}
+                >
                     Raffle starten
                 </button>
             </form>
