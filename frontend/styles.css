@@ -182,8 +182,14 @@ button[type="submit"]{
 }
 
 button:disabled{
-  opacity: 0.45;
+  background: rgba(160,160,160,0.25);
+  border-color: rgba(160,160,160,0.35);
+  color: rgba(255,255,255,0.6);
   cursor: not-allowed;
+}
+
+button:not(:disabled):hover{
+  background: rgba(90,140,255,0.45);
 }
 
 /* =========================================================
