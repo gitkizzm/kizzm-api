@@ -339,8 +339,12 @@ button:not(:disabled):hover{
 
   z-index: 9999;
 
-  /* Vollbild-Dimmer */
-  background: rgba(0,0,0,0.75);
+  /* starker Fokus-Dimmer */
+  background: rgba(0,0,0,0.65);
+
+  /* starker Blur auf allem darunter */
+  backdrop-filter: blur(14px) saturate(0.9);
+  -webkit-backdrop-filter: blur(14px) saturate(0.9);
 }
 
 .modal-overlay.show{
@@ -350,14 +354,15 @@ button:not(:disabled):hover{
 .modal{
   width: min(560px, calc(100vw - 28px));
   border-radius: 20px;
-  padding: 20px 18px;
+  padding: 22px 20px;
 
-  background: rgba(30, 30, 30, 0.92);
-  border: 1px solid rgba(255,255,255,0.25);
+  /* klarer, fast „solid“ */
+  background: rgba(22, 22, 22, 0.97);
+  border: 1px solid rgba(255,255,255,0.35);
 
   box-shadow:
-    0 20px 70px rgba(0,0,0,0.75),
-    inset 0 1px 0 rgba(255,255,255,0.05);
+    0 24px 80px rgba(0,0,0,0.85),
+    inset 0 1px 0 rgba(255,255,255,0.08);
 }
 
 .modal .status.danger{
