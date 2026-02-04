@@ -343,7 +343,11 @@ async def commander_suggest(q: str = ""):
 
     # Build Scryfall query
     # Note: Scryfall search syntax allows regex in name:
-    scry_q = f"game:paper is:commander name:/^{escaped}/i"
+    # scry_q = f"game:paper is:commander name:/^{escaped}/i"
+    # Kein Regex: einfach name:<q> (Scryfall macht sinnvolles Matching)
+    # Optional kannst du q noch in Anführungszeichen setzen, aber für Autocomplete ist ohne Quotes besser.
+    scry_q = f"game:paper is:commander name:{q}"
+
     url = f"{SCRYFALL_BASE}/cards/search?q={quote_plus(scry_q)}&unique=cards&order=name"
 
     headers = {
