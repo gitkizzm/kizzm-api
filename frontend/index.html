@@ -29,8 +29,11 @@
             {% endif %}
         {% elif existing_entry %}
             {% if start_file_exists %}
-            <p class="status ok">
-                Bitte übergebe dieses Deck an {{ deckOwner }}
+            <p class="status">
+                Bitte übergebe dieses Deck an
+                <span class="status ok" style="display:inline-block; padding:4px 8px; margin-left:6px;">
+                    {{ deckOwner }}
+                </span>
             </p>
             {% else %}
             <p class="status danger">
