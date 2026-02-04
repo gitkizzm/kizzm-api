@@ -142,7 +142,7 @@
                 hideBox();
                 return;
                 }
-                box.innerHTML = names.slice(0,10)
+                box.innerHTML = names
                 .map(n => `<div class="suggest-item" data-name="${escapeHtml(n)}">${escapeHtml(n)}</div>`)
                 .join("");
                 box.style.display = "block";
