@@ -1,13 +1,51 @@
 import uvicorn
 from fastapi import FastAPI, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from backend.schemas import DeckSchema
 import json
 from pathlib import Path
 import pandas as pd
 from random import shuffle
+import time 
+import re 
+from collections import OrderedDict
+from urllib.parse import quote_plus
+import httpx
 #python -m uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
+
+# --- Scryfall commander suggest config ---
+SCRYFALL_BASE = "https://api.scryfall.com"
+SUGGEST_MIN_CHARS = 3          # 2 oder 3 – du wolltest 2–3; Default: 3
+SUGGEST_LIMIT = 10             # Smartphone-freundlich
+SCRYFALL_TIMEOUT = 2.0         # Sekunden
+
+CACHE_TTL_SECONDS = 24 * 3600
+CACHE_MAX_ENTRIES = 1000
+
+_suggest_cache = OrderedDict()  # key -> (timestamp, result_list)
+
+def _cache_get(key: str):
+    now = time.time()
+    item = _suggest_cache.get(key)
+    if not item:
+        return None
+    ts, value = item
+    if now - ts > CACHE_TTL_SECONDS:
+        # expired
+        _suggest_cache.pop(key, None)
+        return None
+    # LRU refresh
+    _suggest_cache.move_to_end(key)
+    return value
+
+def _cache_set(key: str, value):
+    now = time.time()
+    _suggest_cache[key] = (now, value)
+    _suggest_cache.move_to_end(key)
+    # enforce size
+    while len(_suggest_cache) > CACHE_MAX_ENTRIES:
+        _suggest_cache.popitem(last=False)
 
 # JSON-Datei
 FILE_PATH = Path("raffle.json")
@@ -282,6 +320,64 @@ def update_deck_owner(deckersteller, new_deck_owner):
         print(f"Fehler beim Einlesen der raffle.json: {e}")
     except Exception as e:
         print(f"Ein unerwarteter Fehler ist aufgetreten: {e}")
+
+@app.get("/api/commander_suggest")
+async def commander_suggest(q: str = ""):
+    """
+    Returns up to 10 commander-legal (is:commander) paper card names matching prefix q.
+    On any error: returns [].
+    """
+    q = (q or "").strip()
+    if len(q) < SUGGEST_MIN_CHARS:
+        return JSONResponse([])
+
+    # Normalize cache key
+    key = q.lower()
+    cached = _cache_get(key)
+    if cached is not None:
+        return JSONResponse(cached)
+
+    # Escape for regex inside name:/^.../i
+    # re.escape makes it safe for regex special chars
+    escaped = re.escape(q)
+
+    # Build Scryfall query
+    # Note: Scryfall search syntax allows regex in name:
+    scry_q = f"game:paper is:commander name:/^{escaped}/i"
+    url = f"{SCRYFALL_BASE}/cards/search?q={quote_plus(scry_q)}&unique=cards&order=name"
+
+    headers = {
+        "Accept": "application/json",
+        # IMPORTANT: set a descriptive UA; adjust to your project name
+        "User-Agent": "CommanderRaffle/1.0 (contact: kizzm-commanderraffle@tri-b-oon.de)",
+    }
+
+    try:
+        async with httpx.AsyncClient(timeout=SCRYFALL_TIMEOUT, headers=headers) as client:
+            r = await client.get(url)
+            if r.status_code != 200:
+                # on any error (429, 5xx, etc.) -> return empty
+                return JSONResponse([])
+
+            payload = r.json()
+            data = payload.get("data") or []
+            # extract names
+            names = []
+            for card in data:
+                name = card.get("name")
+                if name:
+                    names.append(name)
+                if len(names) >= SUGGEST_LIMIT:
+                    break
+
+            # If nothing matches -> [] and cache it too (prevents hammering)
+            _cache_set(key, names)
+            return JSONResponse(names)
+
+    except Exception:
+        # timeout/network/json issues -> no suggestions
+        return JSONResponse([])
+
 
 
 if __name__ == "__main__":

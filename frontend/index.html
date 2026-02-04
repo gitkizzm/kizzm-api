@@ -4,6 +4,28 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Deck Registrierung</title>
+
+    <style>
+        .suggest-wrap { position: relative; max-width: 520px; }
+        .suggest-box {
+            position: absolute;
+            left: 0;
+            right: 0;
+            top: calc(100% + 4px);
+            z-index: 999;
+            background: white;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            max-height: 240px;
+            overflow-y: auto;
+            box-shadow: 0 4px 18px rgba(0,0,0,0.12);
+        }
+        .suggest-item {
+            padding: 10px 12px;
+            cursor: pointer;
+        }
+        .suggest-item:hover { background: #f3f3f3; }
+    </style>
 </head>
 <body>
     <h1>Deck Registrierung</h1>
@@ -47,7 +69,10 @@
             <br><br>
 
             <label for="commander">Name des Commanders (Optional):</label>
-            <input type="text" id="commander" name="commander" value="{{ values.commander if values }}">
+            <div class="suggest-wrap">
+                <input type="text" id="commander" name="commander" autocomplete="off" value="{{ values.commander if values }}">
+                <div id="commanderSuggestBox" class="suggest-box" style="display:none;"></div>
+            </div>
             <br><br>
 
             <label for="deckUrl">DeckURL z.B. Moxfield (Optional):</label>
@@ -61,5 +86,97 @@
             <button type="submit">Send</button>
         </form>
     {% endif %}
+
+    <script>
+        (() => {
+        const MIN_CHARS = 3;      // oder 2, wenn du aggressiver willst
+        const DEBOUNCE_MS = 350;
+
+        const input = document.getElementById("commander");
+        const box = document.getElementById("commanderSuggestBox");
+        if (!input || !box) return;
+
+        let timer = null;
+        let lastQuery = "";
+        let inFlight = false;
+
+        function hideBox() {
+            box.style.display = "none";
+            box.innerHTML = "";
+        }
+
+        function escapeHtml(s) {
+            return String(s)
+            .replaceAll("&", "&amp;")
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;")
+            .replaceAll('"', "&quot;")
+            .replaceAll("'", "&#039;");
+        }
+
+        function render(names) {
+            if (!names || names.length === 0) {
+            hideBox();
+            return;
+            }
+            box.innerHTML = names
+            .slice(0, 10)
+            .map(n => `<div class="suggest-item" data-name="${escapeHtml(n)}">${escapeHtml(n)}</div>`)
+            .join("");
+            box.style.display = "block";
+        }
+
+        async function fetchSuggest(q) {
+            if (inFlight) return; // simpel: max 1 request gleichzeitig
+            inFlight = true;
+            try {
+            const resp = await fetch(`/api/commander_suggest?q=${encodeURIComponent(q)}`, { cache: "no-store" });
+            if (!resp.ok) { hideBox(); return; }
+
+            const data = await resp.json();
+
+            // Wenn User weitergetippt hat: alte Antwort verwerfen
+            if (q !== lastQuery) return;
+
+            render(data);
+            } catch (e) {
+            hideBox();
+            } finally {
+            inFlight = false;
+            }
+        }
+
+        input.addEventListener("input", () => {
+            const q = input.value.trim();
+            lastQuery = q;
+
+            if (q.length < MIN_CHARS) {
+            hideBox();
+            return;
+            }
+
+            clearTimeout(timer);
+            timer = setTimeout(() => fetchSuggest(q), DEBOUNCE_MS);
+        });
+
+        box.addEventListener("click", (ev) => {
+            const item = ev.target.closest(".suggest-item");
+            if (!item) return;
+            const name = item.getAttribute("data-name");
+            input.value = name;
+            hideBox();
+        });
+
+        document.addEventListener("click", (ev) => {
+            if (ev.target === input || box.contains(ev.target)) return;
+            hideBox();
+        });
+
+        input.addEventListener("keydown", (ev) => {
+            if (ev.key === "Escape") hideBox();
+        });
+    })();
+    </script>
+    
 </body>
 </html>
