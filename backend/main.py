@@ -13,7 +13,7 @@ from random import shuffle, randint, choice
 import time 
 import re 
 from collections import OrderedDict
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, unquote_plus
 import httpx
 #python -m uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 
@@ -228,7 +228,15 @@ async def notify_state_change():
             await ws_manager.broadcast_group(f"deck:{did}", payload)
 
 @app.get("/", response_class=HTMLResponse)
-async def get_form(request: Request, deck_id: int = 0):
+async def get_form(
+    request: Request,
+    deck_id: int = 0,
+    error: str | None = None,
+    deckersteller: str | None = None,
+    commander: str | None = None,
+    commander2: str | None = None,
+    deckUrl: str | None = None,
+):
     """
     Zeigt die Startseite mit dem Formular an und verarbeitet Bedingungen basierend auf deck_id, raffle.json und start.txt.
     """
@@ -267,12 +275,18 @@ async def get_form(request: Request, deck_id: int = 0):
                 "request": request,
                 "deck_id": deck_id,
                 "start_file_exists": start_file_exists,
-                "error": (
+                "error": error or (
                     "Der Raffle wurde schon gestartet, "
                     "diese Deck ID wurde aber nicht registriert. "
                     "Bitte sprich mit dem Host."
                 ),
                 "participants": [],
+                "values": {
+                    "deckersteller": deckersteller,
+                    "commander": commander,
+                    "commander2": commander2,
+                    "deckUrl": deckUrl,
+                } if (deckersteller or commander or commander2 or deckUrl) else None,
             }
         )
 
