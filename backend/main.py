@@ -281,12 +281,7 @@ async def get_form(
                     "Bitte sprich mit dem Host."
                 ),
                 "participants": [],
-                "values": {
-                    "deckersteller": deckersteller,
-                    "commander": commander,
-                    "commander2": commander2,
-                    "deckUrl": deckUrl,
-                } if (deckersteller or commander or commander2 or deckUrl) else None,
+                "values": None,
             }
         )
 
@@ -296,9 +291,20 @@ async def get_form(
             "request": request,
             "deck_id": deck_id,
             "start_file_exists": start_file_exists,
-            "existing_entry": existing_entry,  # Übergebe den Datensatz oder None
-            "deckOwner": deckOwner,  # Übergebe den deckOwner
-            "participants": participants,  # Übergabe der Teilnehmernamen
+            "existing_entry": existing_entry,
+            "deckOwner": deckOwner,
+            "participants": participants,
+
+            # NEU: PRG-Fehler + Prefill aus Query-Parametern
+            "error": error,
+            "values": {
+                "deckersteller": deckersteller,
+                "commander": commander,
+                "commander_id": request.query_params.get("commander_id") or None,
+                "commander2": commander2,
+                "commander2_id": request.query_params.get("commander2_id") or None,
+                "deckUrl": deckUrl,
+            } if (deckersteller or commander or commander2 or deckUrl or request.query_params.get("commander_id") or request.query_params.get("commander2_id")) else None,
         }
     )
 
@@ -409,10 +415,11 @@ async def _validate_commander_combo(c1: dict, c2: dict | None) -> str | None:
 
     return None
 
+@app.post("/submit", response_class=HTMLResponse)
 async def submit_form(
     request: Request,
     deckersteller: str = Form(...),
-    commander: str = Form(None),
+    commander: str = Form(...),
     commander_id: str = Form(None),
     commander2: str = Form(None),
     commander2_id: str = Form(None),
@@ -432,6 +439,18 @@ async def submit_form(
         commander2 = (commander2 or "").strip() or None
         commander2_id = (commander2_id or "").strip() or None
 
+        def _redirect_back(err_msg: str):
+            params = (
+                f"deck_id={deck_id}"
+                f"&error={quote_plus(err_msg)}"
+                f"&deckersteller={quote_plus(deckersteller or '')}"
+                f"&commander={quote_plus(commander or '')}"
+                f"&commander_id={quote_plus(commander_id or '')}"
+                f"&commander2={quote_plus(commander2 or '')}"
+                f"&commander2_id={quote_plus(commander2_id or '')}"
+                f"&deckUrl={quote_plus(deckUrl or '')}"
+            )
+            return RedirectResponse(url=f"/?{params}", status_code=303)
 
         # Optional: falls commander2 == commander, wegwerfen
         if commander2 and commander and commander2.strip().lower() == commander.strip().lower():
@@ -457,45 +476,13 @@ async def submit_form(
         for entry in data_list:
             if entry.get("deckersteller") == deckersteller:
                 # Fehler: Deckersteller existiert bereits (Tooltip anzeigen)
-                return templates.TemplateResponse(
-                    "index.html",
-                    {
-                        "request": request,
-                        "deck_id": deck_id,
-                        "error": f"'{deckersteller}' hat bereits ein Deck registriert. Bitte überprüfe deine Namens auswahl",
-                        "values": {
-                            "deckersteller": deckersteller,
-                            "commander": commander,
-                            "commander_id": commander_id,
-                            "commander2": commander2,
-                            "commander2_id": commander2_id,
-                            "deckUrl": deckUrl
-                        },
-                        "participants": [entry.get("deckersteller") for entry in data_list],
-                    }
-                )
+                return _redirect_back(f"'{deckersteller}' hat bereits ein Deck registriert. Bitte überprüfe deine Namens auswahl")
             
         # Prüfen, ob die DeckID bereits existiert
         for entry in data_list:
             if entry.get("deck_id") == deck_id:
                 # Fehler: Deck ID existiert bereits
-                return templates.TemplateResponse(
-                    "index.html",
-                    {
-                        "request": request,
-                        "deck_id": deck_id,
-                        "error": f"Diese Deck ID ist bereits registriert.",
-                        "values": {
-                            "deckersteller": deckersteller,
-                            "commander": commander,
-                            "commander_id": commander_id,
-                            "commander2": commander2,
-                            "commander2_id": commander2_id,
-                            "deckUrl": deckUrl
-                        },
-                        "participants": [entry.get("deckersteller") for entry in data_list],
-                    }
-                )
+                return _redirect_back(f"'{deckersteller}' hat bereits ein Deck registriert. Bitte überprüfe deine Namens auswahl")
 
         field_errors = {}
         c1 = None
@@ -536,24 +523,10 @@ async def submit_form(
                     field_errors["commander"] = combo_error
 
         if field_errors:
-            return templates.TemplateResponse(
-                "index.html",
-                {
-                    "request": request,
-                    "deck_id": deck_id,
-                    "error": "Bitte korrigiere die markierten Felder.",
-                    "field_errors": field_errors,
-                    "values": {
-                        "deckersteller": deckersteller,
-                        "commander": commander,
-                        "commander_id": commander_id,
-                        "commander2": commander2,
-                        "commander2_id": commander2_id,
-                        "deckUrl": deckUrl
-                    },
-                    "participants": [entry.get("deckersteller") for entry in data_list],
-                }
-            )
+            if field_errors:
+                # Wir geben nur eine allgemeine Meldung per Redirect zurück.
+                # Die spezifischen field_errors zeigen wir im GET-Handler wieder an (Patch 2).
+                return _redirect_back("Bitte korrigiere die markierten Felder.")
 
         # Neuen Datensatz hinzufügen
         new_entry = DeckSchema(
@@ -579,102 +552,6 @@ async def submit_form(
         # Erfolgsseite anzeigen
         return RedirectResponse(url="/success", status_code=303)
     
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Fehler beim Speichern der Daten: {e}")
-
-@app.post("/submit", response_class=HTMLResponse)
-async def submit_form(
-    request: Request,
-    deckersteller: str = Form(...),
-    commander: str = Form(...),
-    commander2: str = Form(None),
-    deckUrl: str = Form(None),
-    deck_id: int = Form(...)
-):
-    """
-    Verarbeitet das Formular, prüft die DeckID und den Deckersteller, und fügt neue Datensätze hinzu.
-    """
-    try:
-        # Konvertiere leere Strings zu None
-        deckUrl = deckUrl or None
-        commander = commander or None
-        commander2 = commander2 or None
-
-        # Laden bestehender Daten
-        data_list = []
-        if FILE_PATH.exists():
-            try:
-                with FILE_PATH.open("r", encoding="utf-8") as f:
-                    content = json.load(f)
-                    # Sicherstellen, dass der Inhalt eine Liste ist
-                    if isinstance(content, list):
-                        data_list = content
-                    else:
-                        data_list = [content]  # Einzelnes Objekt in eine Liste umwandeln
-            except (json.JSONDecodeError, ValueError):
-                # Wenn die Datei leer oder ungültig ist, mit leerer Liste fortfahren
-                data_list = []
-
-        # Prüfen, ob der Deckersteller bereits existiert
-        for entry in data_list:
-            if entry.get("deckersteller") == deckersteller:
-                # Fehler: Deckersteller existiert bereits (Tooltip anzeigen)
-                return templates.TemplateResponse(
-                    "index.html",
-                    {
-                        "request": request,
-                        "deck_id": deck_id,
-                        "error": f"'{deckersteller}' hat bereits ein Deck registriert. Bitte überprüfe deine Namens auswahl",
-                        "values": {"deckersteller": deckersteller, "commander": commander, "commander2": commander2, "deckUrl": deckUrl},
-                        "participants": [entry.get("deckersteller") for entry in data_list],
-                    }
-                )
-            
-        # Prüfen, ob die DeckID bereits existiert
-        for entry in data_list:
-            if entry.get("deck_id") == deck_id:
-                # Fehler: Deck ID existiert bereits
-                return templates.TemplateResponse(
-                    "index.html",
-                    {
-                        "request": request,
-                        "deck_id": deck_id,
-                        "error": f"Diese Deck ID ist bereits registriert.",
-                        "values": {"deckersteller": deckersteller, "commander": commander, "commander2": commander2, "deckUrl": deckUrl},
-                        "participants": [entry.get("deckersteller") for entry in data_list],
-                    }
-                )
-
-        #Commander-Kombinationslogik serverseitig validieren ---
-        combo_error = await _validate_commander_combo(commander, commander2)
-        if combo_error:
-            return templates.TemplateResponse(
-                "index.html",
-                {
-                    "request": request,
-                    "deck_id": deck_id,
-                    "error": combo_error,
-                    "values": {"deckersteller": deckersteller, "commander": commander, "commander2": commander2, "deckUrl": deckUrl},
-                    "participants": [entry.get("deckersteller") for entry in data_list],
-                }
-            )
-
-        # Neuen Datensatz hinzufügen
-        new_entry = DeckSchema(deckersteller=deckersteller, commander=commander, commander2=commander2, deckUrl=deckUrl)
-        serializable_data = new_entry.dict()
-        serializable_data['deckUrl'] = str(serializable_data['deckUrl']) if serializable_data['deckUrl'] else None
-        serializable_data['deck_id'] = deck_id  # DeckID hinzufügen
-        serializable_data['deckOwner'] = None
-        data_list.append(serializable_data)
-
-        # Daten zurück in die Datei schreiben
-        with FILE_PATH.open("w", encoding="utf-8") as f:
-            json.dump(data_list, f, ensure_ascii=False, indent=4)
-
-        await notify_state_change()
-        
-        # Erfolgsseite anzeigen
-        return RedirectResponse(url="/success", status_code=303)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Fehler beim Speichern der Daten: {e}")
 
