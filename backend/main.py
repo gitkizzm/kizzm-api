@@ -434,10 +434,18 @@ async def submit_form(
         deckUrl = deckUrl or None
 
         commander = (commander or "").strip() or None
-        commander_id = (commander_id or "").strip() or None
+
+        # commander_id can be string or (buggy) dict from frontend; normalize robustly
+        if isinstance(commander_id, dict):
+            commander_id = commander_id.get("id") or commander_id.get("value") or ""
+        commander_id = str(commander_id or "").strip() or None
 
         commander2 = (commander2 or "").strip() or None
-        commander2_id = (commander2_id or "").strip() or None
+
+        if isinstance(commander2_id, dict):
+            commander2_id = commander2_id.get("id") or commander2_id.get("value") or ""
+        commander2_id = str(commander2_id or "").strip() or None
+
 
         def _redirect_back(err_msg: str):
             params = (
@@ -482,7 +490,7 @@ async def submit_form(
         for entry in data_list:
             if entry.get("deck_id") == deck_id:
                 # Fehler: Deck ID existiert bereits
-                return _redirect_back(f"'{deckersteller}' hat bereits ein Deck registriert. Bitte überprüfe deine Namens auswahl")
+                return _redirect_back("Diese Deck ID ist bereits registriert.")
 
         field_errors = {}
         c1 = None
