@@ -61,7 +61,7 @@
 
                 <label for="commander">Name des Commanders:</label>
                 <div class="suggest-wrap">
-                    <input type="text" id="commander" name="commander" class="commander-input" autocomplete="off"
+                    <input type="text" id="commander" name="commander" class="commander-input" autocomplete="off" required
                         value="{{ values.commander if values }}" placeholder="z.B. Akroma (sucht auf Scryfall)">
                     <input type="hidden" id="commander_id" name="commander_id" value="{{ values.commander_id if values }}">
                     <div id="commanderSpinner" class="input-spinner"></div>
@@ -73,7 +73,7 @@
                 <br><br>
 
                 <div id="commander2Wrap">
-                    <label for="commander2">Commander 2:</label>
+                    <label for="commander2">Partner (optional):</label>
                     <div class="suggest-wrap">
                         <input type="text" id="commander2" name="commander2" class="commander-input" autocomplete="off"
                             value="{{ values.commander2 if values }}"
@@ -90,7 +90,7 @@
                 </div>
 
 
-                <label for="deckUrl">DeckURL z.B. Moxfield (Optional):</label>
+                <label for="deckUrl">DeckURL z.B. Moxfield (optional):</label>
                 <input type="url" id="deckUrl" name="deckUrl" value="{{ values.deckUrl if values }}">
                 <br><br>
 

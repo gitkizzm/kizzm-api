@@ -572,7 +572,8 @@ async def submit_form(
 async def submit_form(
     request: Request,
     deckersteller: str = Form(...),
-    commander: str = Form(None),
+    commander: str = Form(...),
+    commander2: str = Form(None),
     deckUrl: str = Form(None),
     deck_id: int = Form(...)
 ):
@@ -583,6 +584,7 @@ async def submit_form(
         # Konvertiere leere Strings zu None
         deckUrl = deckUrl or None
         commander = commander or None
+        commander2 = commander2 or None
 
         # Laden bestehender Daten
         data_list = []
@@ -609,7 +611,7 @@ async def submit_form(
                         "request": request,
                         "deck_id": deck_id,
                         "error": f"'{deckersteller}' hat bereits ein Deck registriert. Bitte überprüfe deine Namens auswahl",
-                        "values": {"deckersteller": deckersteller, "commander": commander, "deckUrl": deckUrl},
+                        "values": {"deckersteller": deckersteller, "commander": commander, "commander2": commander2, "deckUrl": deckUrl},
                         "participants": [entry.get("deckersteller") for entry in data_list],
                     }
                 )
@@ -624,7 +626,7 @@ async def submit_form(
                         "request": request,
                         "deck_id": deck_id,
                         "error": f"Diese Deck ID ist bereits registriert.",
-                        "values": {"deckersteller": deckersteller, "commander": commander, "deckUrl": deckUrl},
+                        "values": {"deckersteller": deckersteller, "commander": commander, "commander2": commander2, "deckUrl": deckUrl},
                         "participants": [entry.get("deckersteller") for entry in data_list],
                     }
                 )
@@ -644,7 +646,7 @@ async def submit_form(
             )
 
         # Neuen Datensatz hinzufügen
-        new_entry = DeckSchema(deckersteller=deckersteller, commander=commander, deckUrl=deckUrl)
+        new_entry = DeckSchema(deckersteller=deckersteller, commander=commander, commander2=commander2, deckUrl=deckUrl)
         serializable_data = new_entry.dict()
         serializable_data['deckUrl'] = str(serializable_data['deckUrl']) if serializable_data['deckUrl'] else None
         serializable_data['deck_id'] = deck_id  # DeckID hinzufügen
