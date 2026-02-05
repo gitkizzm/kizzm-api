@@ -293,6 +293,7 @@ async def submit_form(
     request: Request,
     deckersteller: str = Form(...),
     commander: str = Form(None),
+    commander2: str = Form(None),
     deckUrl: str = Form(None),
     deck_id: int = Form(...)
 ):
@@ -303,6 +304,12 @@ async def submit_form(
         # Konvertiere leere Strings zu None
         deckUrl = deckUrl or None
         commander = commander or None
+        commander2 = commander2 or None
+
+        # Optional: falls commander2 == commander, wegwerfen
+        if commander2 and commander and commander2.strip().lower() == commander.strip().lower():
+            commander2 = None
+
 
         # Laden bestehender Daten
         data_list = []
@@ -329,7 +336,7 @@ async def submit_form(
                         "request": request,
                         "deck_id": deck_id,
                         "error": f"'{deckersteller}' hat bereits ein Deck registriert. Bitte überprüfe deine Namens auswahl",
-                        "values": {"deckersteller": deckersteller, "commander": commander, "deckUrl": deckUrl},
+                        "values": {"deckersteller": deckersteller, "commander": commander, "commander2": commander2, "deckUrl": deckUrl},
                         "participants": [entry.get("deckersteller") for entry in data_list],
                     }
                 )
@@ -344,13 +351,18 @@ async def submit_form(
                         "request": request,
                         "deck_id": deck_id,
                         "error": f"Diese Deck ID ist bereits registriert.",
-                        "values": {"deckersteller": deckersteller, "commander": commander, "deckUrl": deckUrl},
+                        "values": {"deckersteller": deckersteller, "commander": commander, "commander2": commander2, "deckUrl": deckUrl},
                         "participants": [entry.get("deckersteller") for entry in data_list],
                     }
                 )
 
         # Neuen Datensatz hinzufügen
-        new_entry = DeckSchema(deckersteller=deckersteller, commander=commander, deckUrl=deckUrl)
+        new_entry = DeckSchema(
+                deckersteller=deckersteller,
+                commander=commander,
+                commander2=commander2,
+                deckUrl=deckUrl
+            )
         serializable_data = new_entry.dict()
         serializable_data['deckUrl'] = str(serializable_data['deckUrl']) if serializable_data['deckUrl'] else None
         serializable_data['deck_id'] = deck_id  # DeckID hinzufügen
@@ -591,6 +603,78 @@ async def commander_suggest(q: str = ""):
     except Exception:
         # timeout/network/json issues -> no suggestions
         return JSONResponse([])
+    
+@app.get("/api/partner_suggest")
+async def partner_suggest(q: str = ""):
+    """
+    Returns up to SUGGEST_LIMIT card names matching q that are is:partner (covers Partner, Partner with,
+    Friends forever, Choose a Background, etc. per Scryfall tagging).
+    On any error: returns [].
+    """
+    q = (q or "").strip()
+    if len(q) < SUGGEST_MIN_CHARS:
+        return JSONResponse([])
+
+    # Cache key must include mode, otherwise you mix results with commander_suggest
+    key = f"partner::{q.lower()}"
+    cached = _cache_get(key)
+    if cached is not None:
+        return JSONResponse(cached)
+
+    scry_q = f"game:paper is:partner name:{q}"
+    url = f"{SCRYFALL_BASE}/cards/search?q={quote_plus(scry_q)}&unique=cards&order=name"
+
+    try:
+        async with httpx.AsyncClient(timeout=SCRYFALL_TIMEOUT, headers=SCRYFALL_HEADERS) as client:
+            r = await client.get(url)
+            if r.status_code != 200:
+                return JSONResponse([])
+
+            payload = r.json()
+            data = payload.get("data") or []
+            names = []
+            for card in data:
+                name = card.get("name")
+                if name:
+                    names.append(name)
+                if len(names) >= SUGGEST_LIMIT:
+                    break
+
+            _cache_set(key, names)
+            return JSONResponse(names)
+
+    except Exception:
+        return JSONResponse([])
+
+
+@app.get("/api/commander_partner_capable")
+async def commander_partner_capable(name: str = ""):
+    """
+    Returns {"partner_capable": bool}
+    Checks via Scryfall search: !"<exact name>" is:partner
+    """
+    name = (name or "").strip()
+    if not name:
+        return JSONResponse({"partner_capable": False})
+
+    # exact name match + is:partner
+    # Scryfall exact-name search uses !"Card Name"
+    scry_q = f'!"{name}" is:partner'
+    url = f"{SCRYFALL_BASE}/cards/search?q={quote_plus(scry_q)}&unique=cards"
+
+    try:
+        async with httpx.AsyncClient(timeout=SCRYFALL_TIMEOUT, headers=SCRYFALL_HEADERS) as client:
+            r = await client.get(url)
+            if r.status_code != 200:
+                return JSONResponse({"partner_capable": False})
+
+            payload = r.json()
+            total = payload.get("total_cards") or 0
+            return JSONResponse({"partner_capable": bool(total)})
+
+    except Exception:
+        return JSONResponse({"partner_capable": False})
+
 
 @app.get("/api/background/default")
 async def background_default():
