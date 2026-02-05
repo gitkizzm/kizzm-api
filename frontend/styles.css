@@ -400,3 +400,10 @@ button:not(:disabled):hover{
 .btn-danger:not(:disabled):hover{
   background: rgba(255,120,120,0.40);
 }
+
+.field-error{
+  margin-top: 6px;
+  font-size: 0.95rem;
+  line-height: 1.25rem;
+  color: rgba(255, 120, 120, 0.95);
+}

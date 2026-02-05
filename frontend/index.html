@@ -63,9 +63,13 @@
                 <div class="suggest-wrap">
                     <input type="text" id="commander" name="commander" class="commander-input" autocomplete="off"
                         value="{{ values.commander if values }}" placeholder="z.B. Akroma (sucht auf Scryfall)">
+                    <input type="hidden" id="commander_id" name="commander_id" value="{{ values.commander_id if values }}">
                     <div id="commanderSpinner" class="input-spinner"></div>
                     <div id="commanderSuggestBox" class="suggest-box"></div>
                 </div>
+                {% if field_errors and field_errors.get('commander') %}
+                <div class="field-error">{{ field_errors.get('commander') }}</div>
+                {% endif %}
                 <br><br>
 
                 <div id="commander2Wrap">
@@ -75,9 +79,13 @@
                             value="{{ values.commander2 if values }}"
                             placeholder="Partner (freigeschaltet, wenn partnerfähiger Commander ausgewählt ist)"
                             disabled>
+                        <input type="hidden" id="commander2_id" name="commander2_id" value="{{ values.commander2_id if values }}">
                         <div id="commander2Spinner" class="input-spinner"></div>
                         <div id="commander2SuggestBox" class="suggest-box"></div>
                     </div>
+                    {% if field_errors and field_errors.get('commander2') %}
+                    <div class="field-error">{{ field_errors.get('commander2') }}</div>
+                    {% endif %}
                     <br><br>
                 </div>
 
@@ -91,7 +99,7 @@
 
                 <div class="btn-row">
                     <button type="reset">Reset</button>
-                    <button type="submit">Send</button>
+                    <button type="submit" id="submitBtn">Send</button>
                 </div>
             </form>
         {% endif %}

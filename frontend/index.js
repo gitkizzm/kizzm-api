@@ -14,6 +14,29 @@
   const commander2Box = document.getElementById("commander2SuggestBox");
   const commander2Spinner = document.getElementById("commander2Spinner");
 
+  const commander1Id = document.getElementById("commander_id");
+  const commander2Id = document.getElementById("commander2_id");
+  const submitBtn = document.getElementById("submitBtn");
+
+  let commander1Confirmed = false;
+  let commander2Confirmed = false;
+
+  function updateSubmitEnabled(){
+    if(!submitBtn) return;
+
+    const c1HasText = !!(commander1Input?.value || "").trim();
+    const c2HasText = !!(commander2Input?.value || "").trim();
+
+    // optional, aber wenn Text da ist => confirmed + id muss da sein
+    const c1Ok = !c1HasText || (commander1Confirmed && !!(commander1Id?.value || "").trim());
+    const c2Ok = !c2HasText || (!commander2Input.disabled && commander2Confirmed && !!(commander2Id?.value || "").trim());
+
+    // wenn commander2 gesetzt ist, muss commander1 gesetzt & confirmed sein
+    const comboOk = !c2HasText || (c1HasText && commander1Confirmed);
+
+    submitBtn.disabled = !(c1Ok && c2Ok && comboOk);
+  }
+
   let commander1ConfirmedName = null;
 
   function setSpinner(spinnerEl, isLoading){
@@ -73,9 +96,12 @@
     if (!commander2Input) return;
     commander2Input.disabled = !enabled;
     if (!enabled) {
-      commander2Input.value = "";
-      hideBox(commander2Box);
+        commander2Input.value = "";
+        if (commander2Id) commander2Id.value = "";
+        commander2Confirmed = false;
+        hideBox(commander2Box);
     }
+    updateSubmitEnabled();
   }
 
   function escapeHtml(s){
@@ -87,14 +113,18 @@
       .replaceAll("'","&#039;");
   }
 
-  function renderBox(boxEl, names){
+  function renderBox(boxEl, items){
     if(!boxEl) return;
-    if(!names || names.length === 0){
+    if(!items || items.length === 0){
       hideBox(boxEl);
       return;
     }
-    boxEl.innerHTML = names
-      .map(n => `<div class="suggest-item" data-name="${escapeHtml(n)}">${escapeHtml(n)}</div>`)
+    boxEl.innerHTML = items
+      .map(it => {
+        const name = it?.name ?? "";
+        const id = it?.id ?? "";
+        return `<div class="suggest-item" data-name="${escapeHtml(name)}" data-id="${escapeHtml(id)}">${escapeHtml(name)}</div>`;
+      })
       .join("");
     boxEl.style.display = "block";
   }
@@ -129,17 +159,18 @@
       const q = inputEl.value.trim();
       lastQuery = q;
 
-      // Commander1: sobald User editiert/cleart -> confirmation ungültig -> commander2 reset
-      if (inputEl === commander1Input) {
-        if (!q) {
-          commander1ConfirmedName = null;
-          setCommander2Enabled(false);
-          loadDefaultBackground();
-        } else if (commander1ConfirmedName && q !== commander1ConfirmedName) {
-          commander1ConfirmedName = null;
-          setCommander2Enabled(false);
-        }
-      }
+      // Any typing invalidates the confirmed selection + stored ids
+    if (inputEl === commander1Input) {
+    commander1Confirmed = false;
+    commander1ConfirmedName = null;
+    if (commander1Id) commander1Id.value = "";
+    // editing commander1 invalidates commander2
+    setCommander2Enabled(false);
+    } else if (inputEl === commander2Input) {
+    commander2Confirmed = false;
+    if (commander2Id) commander2Id.value = "";
+    }
+    updateSubmitEnabled();
 
       if(q.length === 0){
         setSpinner(spinnerEl, false);
@@ -159,10 +190,26 @@
     boxEl.addEventListener("click", async (ev) => {
       const item = ev.target.closest(".suggest-item");
       if(!item) return;
-      const name = item.getAttribute("data-name");
-      inputEl.value = name;
-      hideBox(boxEl);
-      if(onPicked) await onPicked(name);
+      const name = item.getAttribute("data-name") || "";
+        const id = item.getAttribute("data-id") || "";
+
+        inputEl.value = name;
+
+        // Store ids + mark confirmed
+        if (inputEl === commander1Input) {
+        if (commander1Id) commander1Id.value = id;
+        commander1Confirmed = true;
+        commander1ConfirmedName = name;
+        } else if (inputEl === commander2Input) {
+        if (commander2Id) commander2Id.value = id;
+        commander2Confirmed = true;
+        }
+
+        hideBox(boxEl);
+
+        if(onPicked) await onPicked(name);
+
+        updateSubmitEnabled();
     });
 
     document.addEventListener("click", (ev) => {
@@ -228,8 +275,18 @@
     if (!current) loadDefaultBackground();
     else loadCommanderBackground(current);
 
-    // commander2 always starts disabled until commander1 is confirmed + partner-capable
+    // Restore state on server-rendered errors (values may be prefilled)
+    commander1Confirmed = !!((commander1Input?.value || "").trim() && (commander1Id?.value || "").trim());
+    commander2Confirmed = !!((commander2Input?.value || "").trim() && (commander2Id?.value || "").trim());
+
+    // commander2 enabled only if it has confirmed value OR will be enabled by picking commander1 again
+    if (commander2Confirmed) {
+    setCommander2Enabled(true);
+    } else {
     setCommander2Enabled(false);
+    }
+
+    updateSubmitEnabled();
 
     // start WS
     connectWS();

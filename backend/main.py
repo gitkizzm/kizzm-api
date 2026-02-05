@@ -288,12 +288,120 @@ async def get_form(request: Request, deck_id: int = 0):
         }
     )
 
-@app.post("/submit", response_class=HTMLResponse)
+async def _scryfall_get_card_by_id(card_id: str) -> dict | None:
+    card_id = (card_id or "").strip()
+    if not card_id:
+        return None
+    url = f"{SCRYFALL_BASE}/cards/{quote_plus(card_id)}"
+    try:
+        async with httpx.AsyncClient(timeout=SCRYFALL_TIMEOUT, headers=SCRYFALL_HEADERS) as client:
+            r = await client.get(url)
+            if r.status_code != 200:
+                return None
+            return r.json()
+    except Exception:
+        return None
+
+
+def _t(card: dict) -> str:
+    return (card.get("type_line") or "").lower()
+
+
+def _o(card: dict) -> str:
+    # oracle_text can be empty for some layouts; that's fine for our checks
+    return (card.get("oracle_text") or "").lower()
+
+
+def _is_background(card: dict) -> bool:
+    return "background" in _t(card)
+
+
+def _has_choose_a_background(card: dict) -> bool:
+    return "choose a background" in _o(card)
+
+
+def _has_friends_forever(card: dict) -> bool:
+    return "friends forever" in _o(card)
+
+
+def _partner_with_target_name(card: dict) -> str | None:
+    # canonical oracle text: "Partner with <Name>"
+    m = re.search(r"partner with ([^\n\(]+)", card.get("oracle_text") or "", flags=re.IGNORECASE)
+    return m.group(1).strip() if m else None
+
+
+async def _scryfall_is_partner_exact_name(name: str) -> bool:
+    name = (name or "").strip()
+    if not name:
+        return False
+    scry_q = f'!"{name}" is:partner'
+    url = f"{SCRYFALL_BASE}/cards/search?q={quote_plus(scry_q)}&unique=cards"
+    try:
+        async with httpx.AsyncClient(timeout=SCRYFALL_TIMEOUT, headers=SCRYFALL_HEADERS) as client:
+            r = await client.get(url)
+            if r.status_code != 200:
+                return False
+            payload = r.json()
+            total = int(payload.get("total_cards") or 0)
+            return total > 0
+    except Exception:
+        return False
+
+
+async def _validate_commander_combo(c1: dict, c2: dict | None) -> str | None:
+    """
+    Returns None if ok, else a German error message.
+    """
+    if c2 is None:
+        if _is_background(c1):
+            return "Ein Background kann nicht alleine Commander sein. Wähle zuerst eine Kreatur mit 'Choose a Background'."
+        return None
+
+    c1_bg = _is_background(c1)
+    c2_bg = _is_background(c2)
+
+    # Background pairing
+    if c1_bg or c2_bg:
+        if c1_bg and c2_bg:
+            return "Zwei Backgrounds zusammen sind nicht erlaubt. Wähle eine Kreatur mit 'Choose a Background' + genau einen Background."
+        non_bg = c2 if c1_bg else c1
+        if not _has_choose_a_background(non_bg):
+            return "Backgrounds funktionieren nur zusammen mit einem Commander, der 'Choose a Background' hat."
+        return None
+
+    # Partner with pairing (must match exactly)
+    p1 = _partner_with_target_name(c1)
+    p2 = _partner_with_target_name(c2)
+    if p1 or p2:
+        if not (p1 and p2):
+            return "Diese Kombination ist nicht gültig: 'Partner with' funktioniert nur mit der jeweils angegebenen Partnerkarte."
+        if p1.lower() != (c2.get("name") or "").lower() or p2.lower() != (c1.get("name") or "").lower():
+            return "Diese Kombination ist nicht gültig: 'Partner with' erlaubt nur das spezifisch genannte Paar."
+        return None
+
+    # Friends forever (must be both)
+    ff1 = _has_friends_forever(c1)
+    ff2 = _has_friends_forever(c2)
+    if ff1 != ff2:
+        return "Diese Kombination ist nicht gültig: 'Friends forever' kann nur mit einer anderen 'Friends forever'-Karte kombiniert werden."
+    if ff1 and ff2:
+        return None
+
+    # Generic partner-like (both must be is:partner)
+    c1_partner = await _scryfall_is_partner_exact_name(c1.get("name") or "")
+    c2_partner = await _scryfall_is_partner_exact_name(c2.get("name") or "")
+    if not (c1_partner and c2_partner):
+        return "Diese Kombination ist nicht Commander-legal: Beide Karten müssen kompatible Partner-Commander sein (oder 'Choose a Background' + Background)."
+
+    return None
+
 async def submit_form(
     request: Request,
     deckersteller: str = Form(...),
     commander: str = Form(None),
+    commander_id: str = Form(None),
     commander2: str = Form(None),
+    commander2_id: str = Form(None),
     deckUrl: str = Form(None),
     deck_id: int = Form(...)
 ):
@@ -303,8 +411,13 @@ async def submit_form(
     try:
         # Konvertiere leere Strings zu None
         deckUrl = deckUrl or None
-        commander = commander or None
-        commander2 = commander2 or None
+
+        commander = (commander or "").strip() or None
+        commander_id = (commander_id or "").strip() or None
+
+        commander2 = (commander2 or "").strip() or None
+        commander2_id = (commander2_id or "").strip() or None
+
 
         # Optional: falls commander2 == commander, wegwerfen
         if commander2 and commander and commander2.strip().lower() == commander.strip().lower():
@@ -336,7 +449,14 @@ async def submit_form(
                         "request": request,
                         "deck_id": deck_id,
                         "error": f"'{deckersteller}' hat bereits ein Deck registriert. Bitte überprüfe deine Namens auswahl",
-                        "values": {"deckersteller": deckersteller, "commander": commander, "commander2": commander2, "deckUrl": deckUrl},
+                        "values": {
+                            "deckersteller": deckersteller,
+                            "commander": commander,
+                            "commander_id": commander_id,
+                            "commander2": commander2,
+                            "commander2_id": commander2_id,
+                            "deckUrl": deckUrl
+                        },
                         "participants": [entry.get("deckersteller") for entry in data_list],
                     }
                 )
@@ -351,18 +471,85 @@ async def submit_form(
                         "request": request,
                         "deck_id": deck_id,
                         "error": f"Diese Deck ID ist bereits registriert.",
-                        "values": {"deckersteller": deckersteller, "commander": commander, "commander2": commander2, "deckUrl": deckUrl},
+                        "values": {
+                            "deckersteller": deckersteller,
+                            "commander": commander,
+                            "commander_id": commander_id,
+                            "commander2": commander2,
+                            "commander2_id": commander2_id,
+                            "deckUrl": deckUrl
+                        },
                         "participants": [entry.get("deckersteller") for entry in data_list],
                     }
                 )
 
+        field_errors = {}
+        c1 = None
+        c2 = None
+
+        # Commander 1: wenn Text gesetzt, muss er aus Suggest stammen (ID vorhanden + validierbar)
+        if commander:
+            if not commander_id:
+                field_errors["commander"] = "Bitte wähle den Commander aus der Vorschlagsliste aus (nicht frei tippen)."
+            else:
+                c1 = await _scryfall_get_card_by_id(commander_id)
+                if not c1:
+                    field_errors["commander"] = "Commander konnte bei Scryfall nicht validiert werden. Bitte erneut aus der Vorschlagsliste auswählen."
+                elif (c1.get("name") or "").strip() != commander.strip():
+                    field_errors["commander"] = "Commander passt nicht zur Auswahl. Bitte erneut aus der Vorschlagsliste auswählen."
+
+        # Commander 2: nur erlaubt, wenn commander1 gesetzt ist; auch hier ID Pflicht
+        if commander2 or commander2_id:
+            if not commander:
+                field_errors["commander2"] = "Commander 2 ist nur möglich, wenn zuerst Commander 1 ausgewählt wurde."
+            elif not commander2 or not commander2_id:
+                field_errors["commander2"] = "Bitte wähle Commander 2 aus der Vorschlagsliste aus."
+            else:
+                c2 = await _scryfall_get_card_by_id(commander2_id)
+                if not c2:
+                    field_errors["commander2"] = "Commander 2 konnte bei Scryfall nicht validiert werden. Bitte erneut aus der Vorschlagsliste auswählen."
+                elif (c2.get("name") or "").strip() != commander2.strip():
+                    field_errors["commander2"] = "Commander 2 passt nicht zur Auswahl. Bitte erneut aus der Vorschlagsliste auswählen."
+
+        # Kombinationslogik (nur wenn c1 valide)
+        if c1 and not field_errors.get("commander"):
+            combo_error = await _validate_commander_combo(c1, c2)
+            if combo_error:
+                # wenn c2 existiert, Fehler bei commander2 anzeigen, sonst bei commander
+                if c2:
+                    field_errors["commander2"] = combo_error
+                else:
+                    field_errors["commander"] = combo_error
+
+        if field_errors:
+            return templates.TemplateResponse(
+                "index.html",
+                {
+                    "request": request,
+                    "deck_id": deck_id,
+                    "error": "Bitte korrigiere die markierten Felder.",
+                    "field_errors": field_errors,
+                    "values": {
+                        "deckersteller": deckersteller,
+                        "commander": commander,
+                        "commander_id": commander_id,
+                        "commander2": commander2,
+                        "commander2_id": commander2_id,
+                        "deckUrl": deckUrl
+                    },
+                    "participants": [entry.get("deckersteller") for entry in data_list],
+                }
+            )
+
         # Neuen Datensatz hinzufügen
         new_entry = DeckSchema(
-                deckersteller=deckersteller,
-                commander=commander,
-                commander2=commander2,
-                deckUrl=deckUrl
-            )
+            deckersteller=deckersteller,
+            commander=commander,
+            commander_id=commander_id,
+            commander2=commander2,
+            commander2_id=commander2_id,
+            deckUrl=deckUrl
+        )
         serializable_data = new_entry.dict()
         serializable_data['deckUrl'] = str(serializable_data['deckUrl']) if serializable_data['deckUrl'] else None
         serializable_data['deck_id'] = deck_id  # DeckID hinzufügen
@@ -546,35 +733,23 @@ def update_deck_owner(deckersteller, new_deck_owner):
 @app.get("/api/commander_suggest")
 async def commander_suggest(q: str = ""):
     """
-    Returns up to 10 commander-legal (is:commander) paper card names matching prefix q.
-    On any error: returns [].
+    Returns up to SUGGEST_LIMIT objects for commander suggestions.
+    Each item: {name, id, oracle_id, type_line}
     """
     q = (q or "").strip()
     if len(q) < SUGGEST_MIN_CHARS:
         return JSONResponse([])
 
-    # Normalize cache key
-    key = q.lower()
+    key = f"cmd::{q.lower()}"
     cached = _cache_get(key)
     if cached is not None:
         return JSONResponse(cached)
 
-    # Escape for regex inside name:/^.../i
-    # re.escape makes it safe for regex special chars
-    escaped = re.escape(q)
-
-    # Build Scryfall query
-    # Note: Scryfall search syntax allows regex in name:
-    # scry_q = f"game:paper is:commander name:/^{escaped}/i"
-    # Kein Regex: einfach name:<q> (Scryfall macht sinnvolles Matching)
-    # Optional kannst du q noch in Anführungszeichen setzen, aber für Autocomplete ist ohne Quotes besser.
     scry_q = f"game:paper is:commander name:{q}"
-
     url = f"{SCRYFALL_BASE}/cards/search?q={quote_plus(scry_q)}&unique=cards&order=name"
 
     headers = {
         "Accept": "application/json",
-        # IMPORTANT: set a descriptive UA; adjust to your project name
         "User-Agent": "CommanderRaffle/1.0 (contact: kizzm-commanderraffle@tri-b-oon.de)",
     }
 
@@ -582,40 +757,41 @@ async def commander_suggest(q: str = ""):
         async with httpx.AsyncClient(timeout=SCRYFALL_TIMEOUT, headers=headers) as client:
             r = await client.get(url)
             if r.status_code != 200:
-                # on any error (429, 5xx, etc.) -> return empty
                 return JSONResponse([])
 
             payload = r.json()
             data = payload.get("data") or []
-            # extract names
-            names = []
+
+            items = []
             for card in data:
                 name = card.get("name")
-                if name:
-                    names.append(name)
-                if len(names) >= SUGGEST_LIMIT:
+                cid = card.get("id")
+                if name and cid:
+                    items.append({
+                        "name": name,
+                        "id": cid,
+                        "oracle_id": card.get("oracle_id"),
+                        "type_line": card.get("type_line"),
+                    })
+                if len(items) >= SUGGEST_LIMIT:
                     break
 
-            # If nothing matches -> [] and cache it too (prevents hammering)
-            _cache_set(key, names)
-            return JSONResponse(names)
+            _cache_set(key, items)
+            return JSONResponse(items)
 
     except Exception:
-        # timeout/network/json issues -> no suggestions
         return JSONResponse([])
     
 @app.get("/api/partner_suggest")
 async def partner_suggest(q: str = ""):
     """
-    Returns up to SUGGEST_LIMIT card names matching q that are is:partner (covers Partner, Partner with,
-    Friends forever, Choose a Background, etc. per Scryfall tagging).
-    On any error: returns [].
+    Returns up to SUGGEST_LIMIT objects matching q that are is:partner.
+    Each item: {name, id, oracle_id, type_line}
     """
     q = (q or "").strip()
     if len(q) < SUGGEST_MIN_CHARS:
         return JSONResponse([])
 
-    # Cache key must include mode, otherwise you mix results with commander_suggest
     key = f"partner::{q.lower()}"
     cached = _cache_get(key)
     if cached is not None:
@@ -632,20 +808,26 @@ async def partner_suggest(q: str = ""):
 
             payload = r.json()
             data = payload.get("data") or []
-            names = []
+
+            items = []
             for card in data:
                 name = card.get("name")
-                if name:
-                    names.append(name)
-                if len(names) >= SUGGEST_LIMIT:
+                cid = card.get("id")
+                if name and cid:
+                    items.append({
+                        "name": name,
+                        "id": cid,
+                        "oracle_id": card.get("oracle_id"),
+                        "type_line": card.get("type_line"),
+                    })
+                if len(items) >= SUGGEST_LIMIT:
                     break
 
-            _cache_set(key, names)
-            return JSONResponse(names)
+            _cache_set(key, items)
+            return JSONResponse(items)
 
     except Exception:
         return JSONResponse([])
-
 
 @app.get("/api/commander_partner_capable")
 async def commander_partner_capable(name: str = ""):
