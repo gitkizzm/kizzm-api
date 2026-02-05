@@ -430,17 +430,23 @@ async def submit_form(
     Verarbeitet das Formular, prüft die DeckID und den Deckersteller, und fügt neue Datensätze hinzu.
     """
     try:
-        # Konvertiere leere Strings zu None
+                # Konvertiere leere Strings zu None
         deckUrl = deckUrl or None
 
-        commander = (commander or "").strip() or None
+        # commander can be string or (buggy) dict from frontend; normalize robustly
+        if isinstance(commander, dict):
+            commander = commander.get("name") or commander.get("value") or ""
+        commander = str(commander or "").strip() or None
 
         # commander_id can be string or (buggy) dict from frontend; normalize robustly
         if isinstance(commander_id, dict):
             commander_id = commander_id.get("id") or commander_id.get("value") or ""
         commander_id = str(commander_id or "").strip() or None
 
-        commander2 = (commander2 or "").strip() or None
+        # commander2 can be string or (buggy) dict from frontend; normalize robustly
+        if isinstance(commander2, dict):
+            commander2 = commander2.get("name") or commander2.get("value") or ""
+        commander2 = str(commander2 or "").strip() or None
 
         if isinstance(commander2_id, dict):
             commander2_id = commander2_id.get("id") or commander2_id.get("value") or ""
@@ -460,10 +466,12 @@ async def submit_form(
             )
             return RedirectResponse(url=f"/?{params}", status_code=303)
 
-        # Optional: falls commander2 == commander, wegwerfen
-        if commander2 and commander and commander2.strip().lower() == commander.strip().lower():
+        # Optional: falls commander2 == commander, wegwerfen (ohne zusätzliche strip() Calls)
+        if commander2 and commander and commander2.lower() == commander.lower():
             commander2 = None
+            commander2_id = None
 
+        print("DEBUG types:", type(commander), type(commander_id), type(commander2), type(commander2_id))
 
         # Laden bestehender Daten
         data_list = []
