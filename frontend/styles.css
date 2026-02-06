@@ -479,11 +479,13 @@ button:not(:disabled):hover{
 
 .card3d-face.front{
   backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
   transform: translateZ(1px);
 }
 
 .card3d-face.back{
   backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
   transform: rotateY(180deg) translateZ(1px);
 }
 
@@ -522,6 +524,10 @@ button:not(:disabled):hover{
   font-weight: 800;
   color: rgba(255,255,255,0.75);
   text-shadow: 0 12px 30px rgba(0,0,0,0.35);
+  
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transform: translateZ(0.2px);
 }
 
 @media (prefers-reduced-motion: reduce){
