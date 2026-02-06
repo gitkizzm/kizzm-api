@@ -15,6 +15,7 @@ import re
 from collections import OrderedDict
 from urllib.parse import quote_plus, unquote_plus
 import httpx
+import os
 #python -m uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 
 # --- Scryfall commander suggest config ---
@@ -77,6 +78,20 @@ def _get_image_url(card: dict, key: str) -> str | None:
 
 # JSON-Datei
 FILE_PATH = Path("raffle.json")
+
+# Serialisiert alle Zugriffe auf raffle.json innerhalb dieses Prozesses
+RAFFLE_LOCK = asyncio.Lock()
+
+def _atomic_write_json(path: Path, data) -> None:
+    """
+    Schreibt JSON atomisch:
+    - erst in temp-Datei schreiben
+    - dann os.replace (atomarer rename) auf Ziel
+    """
+    tmp_path = path.with_suffix(path.suffix + ".tmp")
+    with tmp_path.open("w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=4)
+    os.replace(tmp_path, path)
 
 # FastAPI-App erstellen
 app = FastAPI()
@@ -473,95 +488,50 @@ async def submit_form(
 
         print("DEBUG types:", type(commander), type(commander_id), type(commander2), type(commander2_id))
 
-        # Laden bestehender Daten
-        data_list = []
-        if FILE_PATH.exists():
-            try:
-                with FILE_PATH.open("r", encoding="utf-8") as f:
-                    content = json.load(f)
-                    # Sicherstellen, dass der Inhalt eine Liste ist
-                    if isinstance(content, list):
-                        data_list = content
-                    else:
-                        data_list = [content]  # Einzelnes Objekt in eine Liste umwandeln
-            except (json.JSONDecodeError, ValueError):
-                # Wenn die Datei leer oder ungültig ist, mit leerer Liste fortfahren
-                data_list = []
+        # Read-Check-Write muss atomar/serialisiert sein ---
+        async with RAFFLE_LOCK:
+            # Neu laden (wichtig gegen Race Conditions)
+            data_list = []
+            if FILE_PATH.exists():
+                try:
+                    with FILE_PATH.open("r", encoding="utf-8") as f:
+                        content = json.load(f)
+                        if isinstance(content, list):
+                            data_list = content
+                        else:
+                            data_list = [content]
+                except (json.JSONDecodeError, ValueError):
+                    data_list = []
 
-        # Prüfen, ob der Deckersteller bereits existiert
-        for entry in data_list:
-            if entry.get("deckersteller") == deckersteller:
-                # Fehler: Deckersteller existiert bereits (Tooltip anzeigen)
-                return _redirect_back(f"'{deckersteller}' hat bereits ein Deck registriert. Bitte überprüfe deine Namens auswahl")
-            
-        # Prüfen, ob die DeckID bereits existiert
-        for entry in data_list:
-            if entry.get("deck_id") == deck_id:
-                # Fehler: Deck ID existiert bereits
-                return _redirect_back("Diese Deck ID ist bereits registriert.")
+            # Duplikatchecks müssen innerhalb des Locks passieren
+            for entry in data_list:
+                if entry.get("deckersteller") == deckersteller:
+                    return _redirect_back(
+                        f"'{deckersteller}' hat bereits ein Deck registriert. Bitte überprüfe deine Namens auswahl"
+                    )
 
-        field_errors = {}
-        c1 = None
-        c2 = None
+            for entry in data_list:
+                if entry.get("deck_id") == deck_id:
+                    return _redirect_back("Diese Deck ID ist bereits registriert.")
 
-        # Commander 1: wenn Text gesetzt, muss er aus Suggest stammen (ID vorhanden + validierbar)
-        if commander:
-            if not commander_id:
-                field_errors["commander"] = "Bitte wähle den Commander aus der Vorschlagsliste aus (nicht frei tippen)."
-            else:
-                c1 = await _scryfall_get_card_by_id(commander_id)
-                if not c1:
-                    field_errors["commander"] = "Commander konnte bei Scryfall nicht validiert werden. Bitte erneut aus der Vorschlagsliste auswählen."
-                elif (c1.get("name") or "").strip() != commander.strip():
-                    field_errors["commander"] = "Commander passt nicht zur Auswahl. Bitte erneut aus der Vorschlagsliste auswählen."
+            # Neuen Datensatz hinzufügen
+            new_entry = DeckSchema(
+                deckersteller=deckersteller,
+                commander=commander,
+                commander_id=commander_id,
+                commander2=commander2,
+                commander2_id=commander2_id,
+                deckUrl=deckUrl
+            )
+            serializable_data = new_entry.dict()
+            serializable_data["deckUrl"] = str(serializable_data["deckUrl"]) if serializable_data["deckUrl"] else None
+            serializable_data["deck_id"] = deck_id
+            serializable_data["deckOwner"] = None
 
-        # Commander 2: nur erlaubt, wenn commander1 gesetzt ist; auch hier ID Pflicht
-        if commander2 or commander2_id:
-            if not commander:
-                field_errors["commander2"] = "Commander 2 ist nur möglich, wenn zuerst Commander 1 ausgewählt wurde."
-            elif not commander2 or not commander2_id:
-                field_errors["commander2"] = "Bitte wähle Commander 2 aus der Vorschlagsliste aus."
-            else:
-                c2 = await _scryfall_get_card_by_id(commander2_id)
-                if not c2:
-                    field_errors["commander2"] = "Commander 2 konnte bei Scryfall nicht validiert werden. Bitte erneut aus der Vorschlagsliste auswählen."
-                elif (c2.get("name") or "").strip() != commander2.strip():
-                    field_errors["commander2"] = "Commander 2 passt nicht zur Auswahl. Bitte erneut aus der Vorschlagsliste auswählen."
+            data_list.append(serializable_data)
 
-        # Kombinationslogik (nur wenn c1 valide)
-        if c1 and not field_errors.get("commander"):
-            combo_error = await _validate_commander_combo(c1, c2)
-            if combo_error:
-                # wenn c2 existiert, Fehler bei commander2 anzeigen, sonst bei commander
-                if c2:
-                    field_errors["commander2"] = combo_error
-                else:
-                    field_errors["commander"] = combo_error
-
-        if field_errors:
-            if field_errors:
-                # Wir geben nur eine allgemeine Meldung per Redirect zurück.
-                # Die spezifischen field_errors zeigen wir im GET-Handler wieder an (Patch 2).
-                return _redirect_back("Bitte korrigiere die markierten Felder.")
-
-        # Neuen Datensatz hinzufügen
-        new_entry = DeckSchema(
-            deckersteller=deckersteller,
-            commander=commander,
-            commander_id=commander_id,
-            commander2=commander2,
-            commander2_id=commander2_id,
-            deckUrl=deckUrl
-        )
-        serializable_data = new_entry.dict()
-        serializable_data['deckUrl'] = str(serializable_data['deckUrl']) if serializable_data['deckUrl'] else None
-        serializable_data['deck_id'] = deck_id  # DeckID hinzufügen
-        serializable_data['deckOwner'] = None
-        data_list.append(serializable_data)
-
-        # Daten zurück in die Datei schreiben
-        with FILE_PATH.open("w", encoding="utf-8") as f:
-            json.dump(data_list, f, ensure_ascii=False, indent=4)
+            # Atomisch schreiben
+            _atomic_write_json(FILE_PATH, data_list)
         
         await notify_state_change()
 
