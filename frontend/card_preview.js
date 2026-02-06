@@ -13,12 +13,23 @@ function qs(el, sel){ return el ? el.querySelector(sel) : null; }
 function setFaceImage(cardEl, which, url){
   const face = qs(cardEl, `.card3d-face.${which}`);
   if(!face) return;
+
+  if(which === "front"){
+    if(url){
+      face.style.backgroundImage = `url("${url}")`;
+      cardEl.classList.remove("is-placeholder");
+    }else{
+      face.style.backgroundImage = "";
+      cardEl.classList.add("is-placeholder");
+    }
+    return;
+  }
+
+  // back: darf placeholder-status nicht beeinflussen
   if(url){
     face.style.backgroundImage = `url("${url}")`;
-    cardEl.classList.remove("is-placeholder");
   }else{
     face.style.backgroundImage = "";
-    // placeholder wird per CSS gerendert, wenn is-placeholder aktiv ist
   }
 }
 
@@ -49,16 +60,31 @@ export function initCardPreview(){
 
   // Startzustand: single + Slot2 versteckt
   applyMode(false);
+  // Startzustand: Slot1 Placeholder, single + Slot2 versteckt (Placeholder)
+  applyMode(false);
+
+  if(slot1){
+    setFaceImage(slot1, "front", null); // => "?"
+  }
+
   if(slot2){
+    setFaceImage(slot2, "front", null); // => "?"
     slot2.classList.add("is-hidden");
     slot2.classList.add("is-placeholder");
   }
 }
 
 export async function setCommander1(name){
-  if(!slot1 || !name) return;
-  const url = await fetchBorderCrop(name);
-  if(url) setFaceImage(slot1, "front", url);
+  if(!slot1) return;
+
+  const n = (name || "").trim();
+  if(!n){
+    setFaceImage(slot1, "front", null);
+    return;
+  }
+
+  const url = await fetchBorderCrop(n);
+  setFaceImage(slot1, "front", url);
 }
 
 export function setPartnerSlotEnabled(enabled){
@@ -80,10 +106,24 @@ export function setPartnerSlotEnabled(enabled){
 }
 
 export async function setCommander2(name){
-  if(!slot2 || !name) return;
-  const url = await fetchBorderCrop(name);
-  if(url){
-    slot2.classList.remove("is-placeholder");
-    setFaceImage(slot2, "front", url);
+  if(!slot2) return;
+
+  const n = (name || "").trim();
+  if(!n){
+    setFaceImage(slot2, "front", null);
+    return;
   }
+
+  const url = await fetchBorderCrop(n);
+  setFaceImage(slot2, "front", url);
+}
+
+export function resetCommander1(){
+  if(!slot1) return;
+  setFaceImage(slot1, "front", null);
+}
+
+export function resetCommander2(){
+  if(!slot2) return;
+  setFaceImage(slot2, "front", null);
 }

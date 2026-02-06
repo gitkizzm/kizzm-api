@@ -4,6 +4,8 @@ let cardPreview = {
   setCommander1: null,
   setPartnerSlotEnabled: null,
   setCommander2: null,
+  resetCommander1: null,
+  resetCommander2: null,
 };
 
 async function ensureCardPreviewLoaded(){
@@ -14,6 +16,9 @@ async function ensureCardPreviewLoaded(){
   cardPreview.setCommander1 = mod.setCommander1;
   cardPreview.setPartnerSlotEnabled = mod.setPartnerSlotEnabled;
   cardPreview.setCommander2 = mod.setCommander2;
+
+  cardPreview.resetCommander1 = mod.resetCommander1;
+  cardPreview.resetCommander2 = mod.resetCommander2;
 }
 
 (() => {
@@ -279,10 +284,47 @@ async function ensureCardPreviewLoaded(){
   document.addEventListener("DOMContentLoaded", async () => {
   await ensureCardPreviewLoaded();
   cardPreview.initCardPreview();
-    // background init
-    const current = (commander1Input?.value || "").trim();
-    if (!current) loadDefaultBackground();
-    else loadCommanderBackground(current);
+    // Mobile/Keyboard: focused field into view
+    for (const el of [commander1Input, commander2Input]) {
+      if(!el) continue;
+      el.addEventListener("focus", () => {
+        setTimeout(() => el.scrollIntoView({ behavior: "smooth", block: "center" }), 250);
+      });
+    }
+
+    // Reset preview if inputs are cleared
+    commander1Input?.addEventListener("input", async () => {
+      const v = (commander1Input.value || "").trim();
+      if(v.length === 0){
+        commander1Confirmed = false;
+        if (commander1Id) commander1Id.value = "";
+
+        await ensureCardPreviewLoaded();
+        cardPreview.resetCommander1();
+
+        // partner slot + input zurück
+        setCommander2Enabled(false);
+        cardPreview.setPartnerSlotEnabled(false);
+        cardPreview.resetCommander2();
+
+        updateSubmitEnabled();
+      }
+    });
+
+    commander2Input?.addEventListener("input", async () => {
+      const v = (commander2Input.value || "").trim();
+      if(v.length === 0){
+        commander2Confirmed = false;
+        if (commander2Id) commander2Id.value = "";
+
+        await ensureCardPreviewLoaded();
+        cardPreview.resetCommander2();
+
+        updateSubmitEnabled();
+      }
+    });
+
+    loadDefaultBackground();
 
     // Restore state on server-rendered errors (values may be prefilled)
     commander1Confirmed = !!((commander1Input?.value || "").trim() && (commander1Id?.value || "").trim());

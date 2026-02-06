@@ -409,56 +409,51 @@ button:not(:disabled):hover{
 }
 
 /* =========================
-   3D Card Preview (over glass-card)
+   3D Card Preview (fixed under address bar)
    ========================= */
 
 .glass-card.has-card-preview{
   position: relative;
-  /* Platz schaffen, damit Header/Form nicht von der schwebenden Karte überdeckt werden */
-  padding-top: 140px;
+  /* Statt padding-top: wir schieben die card nach unten, aber lassen overlap zu */
+  margin-top: 140px;
 }
 
+/* Fixiert unter Browser-UI / Safe Area */
 .card-preview{
-  position: absolute;
-  top: 0;
+  position: fixed;
   left: 50%;
-  transform: translate(-50%, -52%); /* sorgt für leichte Überlappung über den oberen Rand */
-  z-index: 5; /* über der glass-card, aber unter ggf. globalen overlays */
+  top: max(10px, calc(env(safe-area-inset-top) + 10px));
+  transform: translateX(-50%);
+  z-index: 50;
+
   display: flex;
   align-items: center;
   justify-content: center;
   gap: clamp(14px, 3vw, 28px);
   pointer-events: none;
 
-  /* Perspektive für 3D */
   perspective: 900px;
-
-  /* “Rutschen” beim Wechsel single->pair */
-  transition: transform 260ms ease;
 }
 
-.card-preview.is-single{
-  transform: translate(-50%, -52%);
-}
-
-.card-preview.is-pair{
-  transform: translate(-50%, -52%);
-}
+/* Layout-State */
+/*
+.card-preview.is-single{}
+.card-preview.is-pair{}
+*/
 
 .card3d{
   width: clamp(130px, 22vw, 190px);
-  aspect-ratio: 5 / 7; /* portrait */
+  aspect-ratio: 5 / 7;
   position: relative;
   transform-style: preserve-3d;
-  border-radius: 0px; /* rechteckig, da border_crop ohnehin keine runden Ecken braucht */
+  border-radius: 0px;
   filter: drop-shadow(0 14px 28px rgba(0,0,0,0.35));
-
-  /* Idle Animation */
-  animation: cardFloat 5.2s ease-in-out infinite;
   will-change: transform;
+
+  animation: cardFloat 5.2s ease-in-out infinite;
 }
 
-/* Unterschiedliche “Stand”-Winkel für 2 Karten */
+/* Single vs Pair Standwinkel */
 .card-preview.is-single .card3d.slot1{
   transform: rotateX(10deg) rotateY(-10deg);
 }
@@ -471,10 +466,7 @@ button:not(:disabled):hover{
   transform: rotateX(10deg) rotateY(16deg) translateX(2px);
 }
 
-/* Slot2 initial verstecken */
-.card3d.is-hidden{
-  display: none;
-}
+.card3d.is-hidden{ display: none; }
 
 .card3d-face{
   position: absolute;
@@ -482,24 +474,19 @@ button:not(:disabled):hover{
   background-size: cover;
   background-position: center;
   background-repeat: no-repeat;
-
-  /* damit das Bild “wie eine Karte” wirkt */
   box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08);
 }
 
-/* Vorderseite */
 .card3d-face.front{
   backface-visibility: hidden;
   transform: translateZ(1px);
 }
 
-/* Rückseite */
 .card3d-face.back{
   backface-visibility: hidden;
   transform: rotateY(180deg) translateZ(1px);
 }
 
-/* Der “Dreh”-Teil: Wir rotieren den ganzen Körper sanft, damit kurz die Backface sichtbar wird */
 @keyframes cardFloat{
   0%   { transform: translateY(0px) rotateX(10deg) rotateY(-10deg); }
   25%  { transform: translateY(-10px) rotateX(12deg) rotateY(8deg); }
@@ -508,9 +495,6 @@ button:not(:disabled):hover{
   100% { transform: translateY(0px) rotateX(10deg) rotateY(-10deg); }
 }
 
-/* In Pair-Mode soll die Keyframe-Rotation nicht die slot-spezifischen Winkel “kaputt animieren”.
-   Lösung: Animation auf einen inneren Wrapper wäre ideal – aber wir bleiben bei Block-Replacement:
-   wir überschreiben die Animation in Pair-Mode mit einer subtileren Y-Wobble-Animation. */
 .card-preview.is-pair .card3d{
   animation: cardFloatPair 5.2s ease-in-out infinite;
 }
@@ -521,7 +505,7 @@ button:not(:disabled):hover{
   100% { transform: translateY(0px); }
 }
 
-/* Placeholder “?” für Slot2 solange kein Commander2 gewählt */
+/* Placeholder “?” für Slot1/Slot2 */
 .card3d.is-placeholder .card3d-face.front{
   background-image: none !important;
   background: rgba(255,255,255,0.08);
@@ -540,12 +524,24 @@ button:not(:disabled):hover{
   text-shadow: 0 12px 30px rgba(0,0,0,0.35);
 }
 
-/* Reduced motion */
 @media (prefers-reduced-motion: reduce){
-  .card3d{
-    animation: none !important;
-  }
-  .card-preview{
-    transition: none !important;
-  }
+  .card3d{ animation: none !important; }
+}
+
+/* Compact form spacing on mobile */
+.glass-card form{
+  display: grid;
+  gap: 10px;
+}
+
+.glass-card select,
+.glass-card input[type="text"],
+.glass-card input[type="url"]{
+  padding: 10px 12px;
+}
+
+.glass-card label{
+  margin-top: 12px;
+  margin-bottom: 0px;   /* <-- DAS ist der entscheidende Teil */
+  line-height: 1.2;
 }

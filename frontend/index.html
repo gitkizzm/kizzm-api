@@ -7,9 +7,7 @@
     <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
-    <div class="glass-card has-card-preview" data-deck-id="{{ deck_id }}">
-
-        <!-- 3D Card Preview (überlappt die glass-card leicht am oberen Rand) -->
+    <!-- 3D Card Preview (überlappt die glass-card leicht am oberen Rand) -->
         <div id="cardPreview" class="card-preview is-single" aria-hidden="true">
             <div class="card3d slot1" data-slot="1">
                 <div class="card3d-face front"></div>
@@ -21,6 +19,8 @@
                 <div class="card3d-face back"></div>
             </div>
         </div>
+        
+    <div class="glass-card has-card-preview" data-deck-id="{{ deck_id }}">
 
         <h1>
             {% if start_file_exists %}
@@ -71,7 +71,7 @@
                     <option value="{{ name }}" {% if values and values.get('deckersteller') == name %}selected{% endif %}>{{ name }}</option>
                     {% endfor %}
                 </select>
-                <br><br>
+                
 
                 <label for="commander">Name des Commanders:</label>
                 <div class="suggest-wrap">
@@ -84,10 +84,9 @@
                 {% if field_errors and field_errors.get('commander') %}
                 <div class="field-error">{{ field_errors.get('commander') }}</div>
                 {% endif %}
-                <br><br>
+                
 
                 <div id="commander2Wrap">
-                    <label for="commander2">Partner (optional):</label>
                     <div class="suggest-wrap">
                         <input type="text" id="commander2" name="commander2" class="commander-input" autocomplete="off"
                             value="{{ values.commander2 if values }}"
@@ -100,13 +99,13 @@
                     {% if field_errors and field_errors.get('commander2') %}
                     <div class="field-error">{{ field_errors.get('commander2') }}</div>
                     {% endif %}
-                    <br><br>
+                    
                 </div>
 
 
                 <label for="deckUrl">DeckURL z.B. Moxfield (optional):</label>
                 <input type="url" id="deckUrl" name="deckUrl" value="{{ values.deckUrl if values }}">
-                <br><br>
+                
 
                 <!-- Hidden Input für DeckID -->
                 <input type="hidden" name="deck_id" value="{{ deck_id }}">
