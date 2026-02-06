@@ -927,68 +927,6 @@ async def _scryfall_is_partner_exact_name(name: str) -> bool:
     except Exception:
         return False
 
-
-async def _validate_commander_combo(commander: str | None, commander2: str | None) -> str | None:
-    """
-    Returns None if ok, else German error string.
-    Uses Scryfall exact-name resolution.
-    """
-    if not commander and commander2:
-        return "Commander 2 ist nur möglich, wenn zuerst ein erster Commander ausgewählt wurde."
-
-    if not commander:
-        return None  # both empty is fine
-
-    c1 = await _scryfall_named_exact(commander)
-    if not c1:
-        return "Commander 1 konnte bei Scryfall nicht gefunden werden. Bitte erneut aus der Vorschlagsliste auswählen."
-
-    if not commander2:
-        if _is_background(c1):
-            return "Ein Background kann nicht alleine Commander sein. Wähle zuerst eine Kreatur mit 'Choose a Background'."
-        return None
-
-    c2 = await _scryfall_named_exact(commander2)
-    if not c2:
-        return "Commander 2 konnte bei Scryfall nicht gefunden werden. Bitte erneut aus der Vorschlagsliste auswählen."
-
-    # Background pairing rules
-    c1_bg = _is_background(c1)
-    c2_bg = _is_background(c2)
-    if c1_bg or c2_bg:
-        if c1_bg and c2_bg:
-            return "Zwei Backgrounds zusammen sind nicht erlaubt. Wähle eine Kreatur mit 'Choose a Background' + genau einen Background."
-        non_bg = c2 if c1_bg else c1
-        if not _has_choose_a_background(non_bg):
-            return "Backgrounds funktionieren nur zusammen mit einem Commander, der 'Choose a Background' hat."
-        return None
-
-    # Partner with rules (must match exactly)
-    p1 = _partner_with_target_name(c1)
-    p2 = _partner_with_target_name(c2)
-    if p1 or p2:
-        if not (p1 and p2):
-            return "Diese Kombination ist nicht gültig: 'Partner with' funktioniert nur mit der jeweils angegebenen Partnerkarte."
-        if p1.lower() != (c2.get("name") or "").lower() or p2.lower() != (c1.get("name") or "").lower():
-            return "Diese Kombination ist nicht gültig: 'Partner with' erlaubt nur das spezifisch genannte Paar."
-        return None
-
-    # Friends forever: must be both
-    ff1 = _has_friends_forever(c1)
-    ff2 = _has_friends_forever(c2)
-    if ff1 != ff2:
-        return "Diese Kombination ist nicht gültig: 'Friends forever' kann nur mit einer anderen 'Friends forever'-Karte kombiniert werden."
-    if ff1 and ff2:
-        return None
-
-    # Generic partner-like: both must be is:partner (covers partner variants)
-    c1_partner = await _scryfall_is_partner_exact_name(c1.get("name") or "")
-    c2_partner = await _scryfall_is_partner_exact_name(c2.get("name") or "")
-    if not (c1_partner and c2_partner):
-        return "Diese Kombination ist nicht Commander-legal: Beide Karten müssen kompatible Partner-Commander sein (oder 'Choose a Background' + Background)."
-
-    return None
-
 @app.get("/api/background/default")
 async def background_default():
     """
