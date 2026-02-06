@@ -154,19 +154,31 @@ export async function revealCommander1(name){
   const baseY = -10;
 
   // Mehrfach drehen (z.B. 3.5 Umdrehungen) -> wirkt „fancy“, endet auf Front
-  const spins = 3.5; // 3.5 = endet auf Vorderseite (0deg) bei richtiger Basis
+  const spins = 4.0; // 3.5 = endet auf Vorderseite (0deg) bei richtiger Basis
   const endY = baseY; // wieder in Ausgangslage
 
+  const duration = 2400;
+
+  // Start: Rotation sehr schnell, dann immer langsamer (über Offsets gesteuert)
   const anim = slot1.animate(
     [
       { transform: `rotateX(${baseX}deg) rotateY(${baseY}deg)` },
-      { transform: `rotateX(${baseX}deg) rotateY(${baseY + 360 * 1.5}deg)` , offset: 0.35 },
-      { transform: `rotateX(${baseX}deg) rotateY(${baseY + 360 * 3.0}deg)` , offset: 0.75 },
+
+      // sehr viel Rotation früh
+      { transform: `rotateX(${baseX}deg) rotateY(${baseY + 360 * 2.2}deg)`, offset: 0.22 },
+
+      // weniger Rotation pro Zeit
+      { transform: `rotateX(${baseX}deg) rotateY(${baseY + 360 * 3.1}deg)`, offset: 0.48 },
+
+      // stark auslaufend
+      { transform: `rotateX(${baseX}deg) rotateY(${baseY + 360 * 3.6}deg)`, offset: 0.74 },
+
+      // Ende exakt auf Front
       { transform: `rotateX(${baseX}deg) rotateY(${baseY + 360 * spins}deg)` },
     ],
     {
-      duration: 1200,
-      easing: "cubic-bezier(0.2, 0.9, 0.2, 1)",
+      duration,
+      easing: "linear",  // Offsets machen das Abbremsen sichtbar
       fill: "forwards",
     }
   );
@@ -175,18 +187,30 @@ export async function revealCommander1(name){
   // Wir warten nicht zu lang, damit der Fetch noch während des Spins fertig wird.
   try{
     // kleine Verzögerung, damit erst „Rücken“ wahrgenommen wird
-    await new Promise(r => setTimeout(r, 650));
-    await setCommander1(n);
+    // Bild parallel laden (ohne zu blocken)
+    const urlPromise = fetchBorderCrop(n);
+
+    // „Reveal“-Zeitpunkt: noch während die Karte rotiert
+    setTimeout(async () => {
+      try{
+        const url = await urlPromise;
+        setFaceImage(slot1, "front", url);  // direkt setzen, ohne zusätzliche Logik
+      }catch(_){}
+    }, 900);
   }catch(_){}
 
   // Warten bis Animation fertig ist
+  try{ await anim.finished; }catch(_){}
+
   try{
-    await anim.finished;
+    anim.commitStyles();   // finalen Zustand als inline style übernehmen
   }catch(_){}
 
-  // Animation aufräumen: wieder dem CSS überlassen (Float kommt zurück)
   anim.cancel();
-  slot1.style.transform = "";   // zurück zu CSS-Regeln (.card-preview.is-single .card3d.slot1)
+
+  // Jetzt zurück zur CSS-Logik, ohne sichtbaren Sprung:
+  // (Transform ist identisch zur CSS-Basis, weil wir auf 4.0 Spins enden.)
+  slot1.style.transform = "";
   slot1.style.animation = prevAnim || "";
 }
 
@@ -199,15 +223,25 @@ export async function revealCommanders(commander1Name, commander2Name){
   // Slot2 Zustand wie in der Registrierung setzen
   setPartnerSlotEnabled(!!c2);
 
-  // Slot1 Reveal (existierende Funktion)
-  await revealCommander1(c1);
+  // Slot1 sofort starten (nicht awaiten -> läuft parallel)
+  const p1 = revealCommander1(c1);
 
-  // Slot2 Reveal nur wenn vorhanden
+  // Slot2: während Slot1 ausläuft starten
   if(c2){
-    // kleine Verzögerung wirkt „cinematic“
-    await new Promise(r => setTimeout(r, 180));
-    await revealCommander2(c2);
+    // Timing: so wählen, dass Slot1 schon in der „slowdown“-Phase ist
+    // Bei deiner duration ~2400ms passt ~1450-1650ms meist gut.
+    const OVERLAP_START_MS = 700;
+
+    await new Promise(r => setTimeout(r, OVERLAP_START_MS));
+    const p2 = revealCommander2(c2);
+
+    // Beide fertig werden lassen
+    await Promise.allSettled([p1, p2]);
+    return;
   }
+
+  // Kein Partner: nur Slot1 fertig abwarten
+  await p1;
 }
 
 export async function revealCommander2(name){
@@ -232,32 +266,34 @@ export async function revealCommander2(name){
   // Slot2 Basis-Y in Pair-Mode ist bei dir positiv (siehe CSS), wir nehmen +16 als „gefühlte“ Pose
   const baseY = 16;
 
-  const spins = 3.5;
+  const spins = 4;
+
+  const duration = 2400;
 
   const anim = slot2.animate(
     [
       { transform: `rotateX(${baseX}deg) rotateY(${baseY}deg)` },
-      { transform: `rotateX(${baseX}deg) rotateY(${baseY + 360 * 1.5}deg)`, offset: 0.35 },
-      { transform: `rotateX(${baseX}deg) rotateY(${baseY + 360 * 3.0}deg)`, offset: 0.75 },
+      { transform: `rotateX(${baseX}deg) rotateY(${baseY + 360 * 2.2}deg)`, offset: 0.22 },
+      { transform: `rotateX(${baseX}deg) rotateY(${baseY + 360 * 3.1}deg)`, offset: 0.48 },
+      { transform: `rotateX(${baseX}deg) rotateY(${baseY + 360 * 3.6}deg)`, offset: 0.74 },
       { transform: `rotateX(${baseX}deg) rotateY(${baseY + 360 * spins}deg)` },
     ],
-    {
-      duration: 1200,
-      easing: "cubic-bezier(0.2, 0.9, 0.2, 1)",
-      fill: "forwards",
-    }
+    { duration, easing: "linear", fill: "forwards" }
   );
 
-  try{
-    await new Promise(r => setTimeout(r, 650));
-    await setCommander2(n);
-  }catch(_){}
+  const urlPromise = fetchBorderCrop(n);
 
-  try{
-    await anim.finished;
-  }catch(_){}
+  setTimeout(async () => {
+    try{
+      const url = await urlPromise;
+      setFaceImage(slot2, "front", url);
+    }catch(_){}
+  }, 900);
 
+  try{ await anim.finished; }catch(_){}
+  try{ anim.commitStyles(); }catch(_){}
   anim.cancel();
+
   slot2.style.transform = "";
   slot2.style.animation = prevAnim || "";
 }

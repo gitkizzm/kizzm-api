@@ -74,10 +74,26 @@ async function ensureCardPreviewLoaded(){
   function setBackground(url, zoom){
     if (url !== undefined && url !== null) {
       document.documentElement.style.setProperty('--bg-image', `url("${url}")`);
+      try{ localStorage.setItem("bg_url", String(url)); }catch(_){}
     }
     if (zoom !== undefined && zoom !== null) {
       document.documentElement.style.setProperty('--bg-zoom', String(zoom));
+      try{ localStorage.setItem("bg_zoom", String(zoom)); }catch(_){}
     }
+  }
+
+  function applyCachedBackground(){
+    try{
+      const url = localStorage.getItem("bg_url");
+      const zoom = localStorage.getItem("bg_zoom");
+      if(url){
+        // sofort setzen -> kein „grauer“ Zustand beim ersten Render
+        document.documentElement.style.setProperty('--bg-image', `url("${url}")`);
+      }
+      if(zoom){
+        document.documentElement.style.setProperty('--bg-zoom', String(zoom));
+      }
+    }catch(_){}
   }
 
   async function loadDefaultBackground(){
@@ -286,6 +302,7 @@ async function ensureCardPreviewLoaded(){
 
   // --- init ---
   document.addEventListener("DOMContentLoaded", async () => {
+    applyCachedBackground();
   await ensureCardPreviewLoaded();
   cardPreview.initCardPreview();
   // Reveal-Animation nach Erhalt-Bestätigung (Deck-Verteilung)
