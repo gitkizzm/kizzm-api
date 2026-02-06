@@ -18,18 +18,27 @@
 
         {% if deck_count > 0 %}
             <div class="status status-inline">
-                Es sind {{ deck_count }} unterschiedliche Decks registriert.
+                {% if start_file_exists %}
+                    {{ confirmed_count }} von {{ deck_count }} der Decks wurden ausgeteilt.
+                {% else %}
+                    Es sind {{ deck_count }} unterschiedliche Decks registriert.
+                {% endif %}
 
-                {% if deck_count > 0 %}
                 <span class="info-wrap">
                     <button type="button" class="info-btn" aria-label="Info">i</button>
                     <div class="info-tooltip">
-                        {% for name in deckersteller %}
-                            <div class="tooltip-item">{{ name }}</div>
+                        {% for it in tooltip_items %}
+                            <div class="tooltip-item">
+                                {% if start_file_exists %}
+                                    <span class="recv-icon {% if it.received_confirmed %}is-ok{% else %}is-pending{% endif %}">
+                                        {% if it.received_confirmed %}✓{% else %}?{% endif %}
+                                    </span>
+                                {% endif %}
+                                {{ it.name }}
+                            </div>
                         {% endfor %}
                     </div>
                 </span>
-                {% endif %}
             </div>
         {% else %}
             {% if deck_count == 0 %}

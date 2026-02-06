@@ -181,10 +181,19 @@ def _load_raffle_list() -> list[dict]:
 
 def _global_signature(start_file_exists: bool, raffle_list: list[dict]) -> str:
     deck_ids = {e.get("deck_id") for e in raffle_list if "deck_id" in e}
+    confirmed = 0
+    total = 0
+    for e in raffle_list:
+        if "deck_id" in e:
+            total += 1
+            if e.get("received_confirmed") is True:
+                confirmed += 1
+
     obj = {
         "start_file_exists": start_file_exists,
         "deck_count": len(deck_ids),
-        # optional: could add more global UI-relevant fields
+        "total_decks": total,
+        "confirmed_count": confirmed,
     }
     return hashlib.sha1(json.dumps(obj, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
 
@@ -202,11 +211,14 @@ def _deck_signature(deck_id: int, start_file_exists: bool, raffle_list: list[dic
     # - raffle started or not
     # - whether this deck_id is registered
     # - who the deckOwner is (after start)
+    received_confirmed = entry.get("received_confirmed") if entry else None
+
     obj = {
         "deck_id": deck_id,
         "start_file_exists": start_file_exists,
         "registered": registered,
         "deckOwner": deck_owner,
+        "received_confirmed": received_confirmed,
     }
     return hashlib.sha1(json.dumps(obj, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
 
@@ -582,6 +594,7 @@ async def submit_form(
             serializable_data["deckUrl"] = str(serializable_data["deckUrl"]) if serializable_data["deckUrl"] else None
             serializable_data["deck_id"] = deck_id
             serializable_data["deckOwner"] = None
+            serializable_data["received_confirmed"] = False
 
             data_list.append(serializable_data)
 
@@ -636,19 +649,53 @@ async def customer_control_panel(request: Request):
     start_file_exists = Path("start.txt").exists()
 
     deck_count = -1
+
+    # Behalte deckersteller-Liste explizit (für "vor Start"-UI)
     deckersteller = []
+
+    # Neu für "nach Start"-UI
+    tooltip_items = []
+    confirmed_count = 0
+    total_decks = 0
 
     if FILE_PATH.exists():
         try:
             with FILE_PATH.open("r", encoding="utf-8") as f:
                 content = json.load(f)
                 if isinstance(content, list):
-                    deckersteller = sorted({
-                        entry.get("deckersteller")
-                        for entry in content
-                        if entry.get("deckersteller")
-                    })
-                    deck_count = len(deckersteller)
+
+                    if start_file_exists:
+                        # NACH Start: Owners + Status
+                        total_decks = len([e for e in content if e.get("deck_id") is not None])
+                        deck_count = total_decks  # Y
+
+                        confirmed_count = sum(1 for e in content if e.get("received_confirmed") is True)  # X
+
+                        tooltip_items = sorted(
+                            [
+                                {
+                                    "name": (e.get("deckOwner") or "(noch kein Owner)"),
+                                    "received_confirmed": bool(e.get("received_confirmed")),
+                                }
+                                for e in content
+                                if e.get("deck_id") is not None
+                            ],
+                            key=lambda x: x["name"].lower()
+                        )
+
+                    else:
+                        # VOR Start: Deckersteller wie bisher
+                        deckersteller = sorted({
+                            entry.get("deckersteller")
+                            for entry in content
+                            if entry.get("deckersteller")
+                        })
+                        deck_count = len(deckersteller)
+
+                        # optional: tooltip_items trotzdem füllen, falls du im Template vereinheitlichen willst
+                        tooltip_items = [{"name": n, "received_confirmed": False} for n in deckersteller]
+                        confirmed_count = 0
+
         except (json.JSONDecodeError, ValueError):
             pass
 
@@ -657,8 +704,14 @@ async def customer_control_panel(request: Request):
         {
             "request": request,
             "start_file_exists": start_file_exists,
+
+            # alt (bleibt erhalten)
             "deck_count": deck_count,
             "deckersteller": deckersteller,
+
+            # neu
+            "confirmed_count": confirmed_count,
+            "tooltip_items": tooltip_items,
         }
     )
 
@@ -740,6 +793,7 @@ def update_deck_owner(deckersteller, new_deck_owner):
         for entry in content:
             if entry.get("deckersteller") == deckersteller:
                 entry["deckOwner"] = new_deck_owner  # Feld aktualisieren
+                entry["received_confirmed"] = False
                 entry_found = True
                 break
 
@@ -756,6 +810,30 @@ def update_deck_owner(deckersteller, new_deck_owner):
         print(f"Fehler beim Einlesen der raffle.json: {e}")
     except Exception as e:
         print(f"Ein unerwarteter Fehler ist aufgetreten: {e}")
+
+@app.post("/confirm_received")
+async def confirm_received(deck_id: int = Form(...)):
+    """
+    Markiert für eine Deck-ID den Erhalt als bestätigt.
+    """
+    async with RAFFLE_LOCK:
+        data_list = _load_raffle_list()
+
+        updated = False
+        for entry in data_list:
+            if entry.get("deck_id") == deck_id:
+                # nur sinnvoll, wenn raffle gestartet und ein Owner gesetzt ist
+                entry["received_confirmed"] = True
+                updated = True
+                break
+
+        if not updated:
+            raise HTTPException(status_code=404, detail="Deck ID nicht gefunden.")
+
+        _atomic_write_json(FILE_PATH, data_list)
+
+    await notify_state_change()
+    return RedirectResponse(url=f"/?deck_id={deck_id}", status_code=303)
 
 @app.get("/api/commander_suggest")
 async def commander_suggest(q: str = ""):

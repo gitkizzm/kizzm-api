@@ -49,6 +49,22 @@
                 {{ deckOwner }}
             </span>
         </p>
+
+        {% if existing_entry.received_confirmed %}
+            <div class="status ok" style="margin-top: 12px;">
+                Erhalt des Decks wurde bestätigt.
+            </div>
+        {% else %}
+            <form action="/confirm_received" method="post" style="margin-top: 14px;">
+                <input type="hidden" name="deck_id" value="{{ deck_id }}">
+                <div class="btn-row">
+                    <button type="submit">
+                        Erhalt bestätigen
+                    </button>
+                </div>
+            </form>
+        {% endif %}
+
         {% else %}
         <p class="status danger">
             Dieses Deck wurde bereits registriert. Bitte warte bis der Raffle startet.

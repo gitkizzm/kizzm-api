@@ -545,3 +545,20 @@ button:not(:disabled):hover{
   margin-bottom: 0px;   /* <-- DAS ist der entscheidende Teil */
   line-height: 1.2;
 }
+
+.recv-icon{
+  display: inline-block;
+  width: 18px;
+  text-align: center;
+  margin-right: 8px;
+  font-weight: 900;
+  opacity: 0.95;
+}
+
+.recv-icon.is-ok{
+  color: rgba(140,255,170,0.95);
+}
+
+.recv-icon.is-pending{
+  color: rgba(210,210,210,0.75);
+}
