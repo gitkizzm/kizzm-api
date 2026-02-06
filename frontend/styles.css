@@ -407,3 +407,145 @@ button:not(:disabled):hover{
   line-height: 1.25rem;
   color: rgba(255, 120, 120, 0.95);
 }
+
+/* =========================
+   3D Card Preview (over glass-card)
+   ========================= */
+
+.glass-card.has-card-preview{
+  position: relative;
+  /* Platz schaffen, damit Header/Form nicht von der schwebenden Karte überdeckt werden */
+  padding-top: 140px;
+}
+
+.card-preview{
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translate(-50%, -52%); /* sorgt für leichte Überlappung über den oberen Rand */
+  z-index: 5; /* über der glass-card, aber unter ggf. globalen overlays */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(14px, 3vw, 28px);
+  pointer-events: none;
+
+  /* Perspektive für 3D */
+  perspective: 900px;
+
+  /* “Rutschen” beim Wechsel single->pair */
+  transition: transform 260ms ease;
+}
+
+.card-preview.is-single{
+  transform: translate(-50%, -52%);
+}
+
+.card-preview.is-pair{
+  transform: translate(-50%, -52%);
+}
+
+.card3d{
+  width: clamp(130px, 22vw, 190px);
+  aspect-ratio: 5 / 7; /* portrait */
+  position: relative;
+  transform-style: preserve-3d;
+  border-radius: 0px; /* rechteckig, da border_crop ohnehin keine runden Ecken braucht */
+  filter: drop-shadow(0 14px 28px rgba(0,0,0,0.35));
+
+  /* Idle Animation */
+  animation: cardFloat 5.2s ease-in-out infinite;
+  will-change: transform;
+}
+
+/* Unterschiedliche “Stand”-Winkel für 2 Karten */
+.card-preview.is-single .card3d.slot1{
+  transform: rotateX(10deg) rotateY(-10deg);
+}
+
+.card-preview.is-pair .card3d.slot1{
+  transform: rotateX(10deg) rotateY(-16deg) translateX(-2px);
+}
+
+.card-preview.is-pair .card3d.slot2{
+  transform: rotateX(10deg) rotateY(16deg) translateX(2px);
+}
+
+/* Slot2 initial verstecken */
+.card3d.is-hidden{
+  display: none;
+}
+
+.card3d-face{
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+
+  /* damit das Bild “wie eine Karte” wirkt */
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08);
+}
+
+/* Vorderseite */
+.card3d-face.front{
+  backface-visibility: hidden;
+  transform: translateZ(1px);
+}
+
+/* Rückseite */
+.card3d-face.back{
+  backface-visibility: hidden;
+  transform: rotateY(180deg) translateZ(1px);
+}
+
+/* Der “Dreh”-Teil: Wir rotieren den ganzen Körper sanft, damit kurz die Backface sichtbar wird */
+@keyframes cardFloat{
+  0%   { transform: translateY(0px) rotateX(10deg) rotateY(-10deg); }
+  25%  { transform: translateY(-10px) rotateX(12deg) rotateY(8deg); }
+  50%  { transform: translateY(0px) rotateX(10deg) rotateY(-6deg); }
+  75%  { transform: translateY(-8px) rotateX(11deg) rotateY(12deg); }
+  100% { transform: translateY(0px) rotateX(10deg) rotateY(-10deg); }
+}
+
+/* In Pair-Mode soll die Keyframe-Rotation nicht die slot-spezifischen Winkel “kaputt animieren”.
+   Lösung: Animation auf einen inneren Wrapper wäre ideal – aber wir bleiben bei Block-Replacement:
+   wir überschreiben die Animation in Pair-Mode mit einer subtileren Y-Wobble-Animation. */
+.card-preview.is-pair .card3d{
+  animation: cardFloatPair 5.2s ease-in-out infinite;
+}
+
+@keyframes cardFloatPair{
+  0%   { transform: translateY(0px); }
+  50%  { transform: translateY(-10px); }
+  100% { transform: translateY(0px); }
+}
+
+/* Placeholder “?” für Slot2 solange kein Commander2 gewählt */
+.card3d.is-placeholder .card3d-face.front{
+  background-image: none !important;
+  background: rgba(255,255,255,0.08);
+  backdrop-filter: blur(6px);
+}
+
+.card3d.is-placeholder .card3d-face.front::after{
+  content: "?";
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: clamp(52px, 7vw, 78px);
+  font-weight: 800;
+  color: rgba(255,255,255,0.75);
+  text-shadow: 0 12px 30px rgba(0,0,0,0.35);
+}
+
+/* Reduced motion */
+@media (prefers-reduced-motion: reduce){
+  .card3d{
+    animation: none !important;
+  }
+  .card-preview{
+    transition: none !important;
+  }
+}

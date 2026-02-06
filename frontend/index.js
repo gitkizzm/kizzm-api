@@ -1,3 +1,21 @@
+// --- Card Preview module (dynamic import, keeps index.js as classic script) ---
+let cardPreview = {
+  initCardPreview: null,
+  setCommander1: null,
+  setPartnerSlotEnabled: null,
+  setCommander2: null,
+};
+
+async function ensureCardPreviewLoaded(){
+  if(cardPreview.initCardPreview) return;
+
+  const mod = await import("/static/card_preview.js");
+  cardPreview.initCardPreview = mod.initCardPreview;
+  cardPreview.setCommander1 = mod.setCommander1;
+  cardPreview.setPartnerSlotEnabled = mod.setPartnerSlotEnabled;
+  cardPreview.setCommander2 = mod.setCommander2;
+}
+
 (() => {
   const MIN_CHARS = 3;
   const DEBOUNCE_MS = 350;
@@ -269,7 +287,9 @@
   }
 
   // --- init ---
-  document.addEventListener("DOMContentLoaded", () => {
+  document.addEventListener("DOMContentLoaded", async () => {
+  await ensureCardPreviewLoaded();
+  cardPreview.initCardPreview();
     // background init
     const current = (commander1Input?.value || "").trim();
     if (!current) loadDefaultBackground();
@@ -300,10 +320,18 @@
     endpointUrlBuilder: (q) => `/api/commander_suggest?q=${encodeURIComponent(q)}`,
     onPicked: async (name) => {
       commander1ConfirmedName = name;
+
+      // Hintergrund bleibt wie bisher
       await loadCommanderBackground(name);
 
+      // Card Preview
+      await ensureCardPreviewLoaded();
+      await cardPreview.setCommander1(name);
+
+      // Partnerfähigkeit -> Slot2 Placeholder sofort einblenden/ausblenden
       const partnerCapable = await checkPartnerCapable(name);
       setCommander2Enabled(partnerCapable);
+      cardPreview.setPartnerSlotEnabled(partnerCapable);
     }
   });
 
@@ -313,7 +341,10 @@
     boxEl: commander2Box,
     spinnerEl: commander2Spinner,
     endpointUrlBuilder: (q) => `/api/partner_suggest?q=${encodeURIComponent(q)}`,
-    onPicked: async (_name) => {}
+    onPicked: async (name) => {
+      await ensureCardPreviewLoaded();
+      await cardPreview.setCommander2(name);
+    }
   });
 
 })();

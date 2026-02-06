@@ -7,7 +7,21 @@
     <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
-    <div class="glass-card" data-deck-id="{{ deck_id }}">
+    <div class="glass-card has-card-preview" data-deck-id="{{ deck_id }}">
+
+        <!-- 3D Card Preview (überlappt die glass-card leicht am oberen Rand) -->
+        <div id="cardPreview" class="card-preview is-single" aria-hidden="true">
+            <div class="card3d slot1" data-slot="1">
+                <div class="card3d-face front"></div>
+                <div class="card3d-face back"></div>
+            </div>
+
+            <div class="card3d slot2 is-placeholder is-hidden" data-slot="2">
+                <div class="card3d-face front"></div>
+                <div class="card3d-face back"></div>
+            </div>
+        </div>
+
         <h1>
             {% if start_file_exists %}
                 Deck Verteilung
