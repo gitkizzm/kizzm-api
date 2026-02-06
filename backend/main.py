@@ -504,6 +504,45 @@ async def submit_form(
 
         print("DEBUG types:", type(commander), type(commander_id), type(commander2), type(commander2_id))
 
+        # ---------------------------------------------------------
+        # Field-Errors: Commander-Kombinationen (Partner/Background/...)
+        # ---------------------------------------------------------
+        field_errors = {}
+
+        # Basis-Konsistenz: commander2 ohne commander ist nicht erlaubt
+        if commander2 and not commander:
+            field_errors["commander2"] = "Commander 2 ist nur möglich, wenn zuerst ein erster Commander ausgewählt wurde."
+
+        # IDs sollten gesetzt sein, wenn die Namen aus der Suggest-Liste kommen
+        # (sonst können wir nicht robust validieren)
+        if commander and not commander_id:
+            field_errors["commander"] = "Bitte Commander 1 aus der Vorschlagsliste auswählen (ID fehlt)."
+
+        if commander2 and not commander2_id:
+            field_errors["commander2"] = "Bitte Commander 2 aus der Vorschlagsliste auswählen (ID fehlt)."
+
+        # Wenn wir valide IDs haben: Scryfall laden und Kombi-Regeln prüfen
+        if commander_id and (not commander2 or commander2_id):
+            c1 = await _scryfall_get_card_by_id(commander_id)
+            if not c1:
+                field_errors["commander"] = "Commander 1 konnte bei Scryfall nicht geladen werden. Bitte erneut auswählen."
+
+            c2 = None
+            if commander2_id:
+                c2 = await _scryfall_get_card_by_id(commander2_id)
+                if not c2:
+                    field_errors["commander2"] = "Commander 2 konnte bei Scryfall nicht geladen werden. Bitte erneut auswählen."
+
+            # Nur wenn beide (falls benötigt) geladen wurden, Kombi prüfen
+            if c1 and (c2 is not None or not commander2_id):
+                combo_err = await _validate_commander_combo(c1, c2)
+                if combo_err:
+                    # In der Praxis ist es fast immer commander2, aber zur Sicherheit:
+                    field_errors["commander2"] = combo_err
+
+        if field_errors:
+            return _redirect_back("Bitte korrigiere die markierten Felder.", field_errors)
+
         # Read-Check-Write muss atomar/serialisiert sein ---
         async with RAFFLE_LOCK:
             # Neu laden (wichtig gegen Race Conditions)
