@@ -82,17 +82,6 @@ async function ensureCardPreviewLoaded(){
     }catch(_){}
   }
 
-  async function loadCommanderBackground(name){
-    try{
-      const r = await fetch(`/api/background/commander?name=${encodeURIComponent(name)}`, { cache:"no-store" });
-      if(!r.ok) return;
-      const data = await r.json();
-      if(data && data.url){
-        setBackground(data.url, data.zoom || 1.0);
-      }
-    }catch(_){}
-  }
-
   async function checkPartnerCapable(name){
     try{
       const r = await fetch(`/api/commander_partner_capable?name=${encodeURIComponent(name)}`, { cache:"no-store" });
@@ -321,14 +310,11 @@ async function ensureCardPreviewLoaded(){
     onPicked: async (name) => {
       commander1ConfirmedName = name;
 
-      // Hintergrund bleibt wie bisher
-      await loadCommanderBackground(name);
-
-      // Card Preview
+      // Card Preview (3D Karte) aktualisieren
       await ensureCardPreviewLoaded();
       await cardPreview.setCommander1(name);
 
-      // Partnerfähigkeit -> Slot2 Placeholder sofort einblenden/ausblenden
+      // Partnerfähigkeit prüfen -> Slot2 Placeholder einblenden/ausblenden
       const partnerCapable = await checkPartnerCapable(name);
       setCommander2Enabled(partnerCapable);
       cardPreview.setPartnerSlotEnabled(partnerCapable);
