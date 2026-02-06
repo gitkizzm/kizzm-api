@@ -8,7 +8,12 @@
 </head>
 <body>
     <!-- 3D Card Preview (überlappt die glass-card leicht am oberen Rand) -->
-        <div id="cardPreview" class="card-preview is-single" aria-hidden="true">
+        <div id="cardPreview"
+                class="card-preview is-single"
+                aria-hidden="true"
+                data-reveal="{% if start_file_exists and existing_entry and existing_entry.received_confirmed %}1{% else %}0{% endif %}"
+                data-commander="{% if existing_entry and existing_entry.commander %}{{ existing_entry.commander }}{% endif %}"
+                data-commander2="{% if existing_entry and existing_entry.commander2 %}{{ existing_entry.commander2 }}{% endif %}">
             <div class="card3d slot1" data-slot="1">
                 <div class="card3d-face front"></div>
                 <div class="card3d-face back"></div>
