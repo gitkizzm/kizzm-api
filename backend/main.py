@@ -247,6 +247,7 @@ async def get_form(
     request: Request,
     deck_id: int = 0,
     error: str | None = None,
+    field_errors: str | None = None,
     deckersteller: str | None = None,
     commander: str | None = None,
     commander2: str | None = None,
@@ -300,6 +301,15 @@ async def get_form(
             }
         )
 
+    decoded_field_errors = None
+    if field_errors:
+        try:
+            decoded_field_errors = json.loads(unquote_plus(field_errors))
+            if not isinstance(decoded_field_errors, dict):
+                decoded_field_errors = None
+        except Exception:
+            decoded_field_errors = None
+
     return templates.TemplateResponse(
         "index.html",
         {
@@ -312,6 +322,7 @@ async def get_form(
 
             # NEU: PRG-Fehler + Prefill aus Query-Parametern
             "error": error,
+            "field_errors": decoded_field_errors,
             "values": {
                 "deckersteller": deckersteller,
                 "commander": commander,
@@ -468,7 +479,11 @@ async def submit_form(
         commander2_id = str(commander2_id or "").strip() or None
 
 
-        def _redirect_back(err_msg: str):
+        def _redirect_back(err_msg: str, field_errors_dict: dict | None = None):
+            fe = ""
+            if field_errors_dict:
+                fe = f"&field_errors={quote_plus(json.dumps(field_errors_dict, ensure_ascii=False))}"
+
             params = (
                 f"deck_id={deck_id}"
                 f"&error={quote_plus(err_msg)}"
@@ -478,6 +493,7 @@ async def submit_form(
                 f"&commander2={quote_plus(commander2 or '')}"
                 f"&commander2_id={quote_plus(commander2_id or '')}"
                 f"&deckUrl={quote_plus(deckUrl or '')}"
+                f"{fe}"
             )
             return RedirectResponse(url=f"/?{params}", status_code=303)
 
