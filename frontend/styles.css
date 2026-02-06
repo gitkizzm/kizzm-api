@@ -562,3 +562,28 @@ button:not(:disabled):hover{
 .recv-icon.is-pending{
   color: rgba(210,210,210,0.75);
 }
+
+/* =========================================================
+   Disabled fields: stronger visual feedback
+   ========================================================= */
+
+/* Allgemein: disabled Felder klarer unterscheiden */
+select:disabled,
+input:disabled{
+  background: rgba(0,0,0,0.28);          /* dunkler */
+  border-color: rgba(255,255,255,0.14);  /* weniger Kontrast */
+  color: rgba(255,255,255,0.55);         /* text etwas gedimmt */
+  opacity: 0.78;                         /* insgesamt „ausgegraut“ */
+  cursor: not-allowed;
+}
+
+/* Placeholder in disabled Inputs ebenfalls gedimmt */
+input:disabled::placeholder{
+  color: rgba(255,255,255,0.38);
+}
+
+/* Spezifisch Commander2 noch stärker, weil es dein wichtigster UX-Fall ist */
+#commander2:disabled{
+  background: rgba(0,0,0,0.38);          /* noch dunkler */
+  opacity: 0.72;
+}
