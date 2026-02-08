@@ -417,6 +417,44 @@ def _build_rounds(players: list[str], num_pods: int, max_rounds: int = MAX_ROUND
         rounds_named.append(round_pods)
     return rounds_named
 
+def _apply_round_to_raffle(raffle_list: list[dict], state: dict, round_no: int):
+    """
+    Schreibt in jede raffle.json-Entry:
+      - pairing_round
+      - pairing_table
+      - pairing_players (Liste der Spielernamen am Tisch)
+      - pairing_phase
+    Mapping erfolgt über deckOwner (Spieleridentität).
+    """
+    rounds = state.get("rounds") or []
+    phase = state.get("phase") or "ready"
+    if round_no < 1 or round_no > len(rounds):
+        return
+
+    pods = rounds[round_no - 1]  # 0-indexed
+    # player -> (table_no, players_at_table)
+    assign = {}
+    for t, group in enumerate(pods, start=1):
+        for p in group:
+            assign[p] = (t, group)
+
+    for e in raffle_list:
+        if e.get("deck_id") is None:
+            continue
+        owner = (e.get("deckOwner") or "").strip()
+        if not owner:
+            continue
+        if owner in assign:
+            t, group = assign[owner]
+            e["pairing_round"] = round_no
+            e["pairing_table"] = t
+            e["pairing_players"] = group
+        else:
+            # falls irgendwas nicht zuordenbar ist
+            e["pairing_round"] = round_no
+            e["pairing_table"] = None
+            e["pairing_players"] = []
+        e["pairing_phase"] = phase
 
 def _global_signature(start_file_exists: bool, raffle_list: list[dict]) -> str:
     deck_ids = {e.get("deck_id") for e in raffle_list if "deck_id" in e}
@@ -428,11 +466,14 @@ def _global_signature(start_file_exists: bool, raffle_list: list[dict]) -> str:
             if e.get("received_confirmed") is True:
                 confirmed += 1
 
+    pair = _load_pairings() or {}
     obj = {
         "start_file_exists": start_file_exists,
         "deck_count": len(deck_ids),
         "total_decks": total,
         "confirmed_count": confirmed,
+        "pairings_phase": pair.get("phase"),
+        "active_round": pair.get("active_round"),
     }
     return hashlib.sha1(json.dumps(obj, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
 
@@ -458,6 +499,9 @@ def _deck_signature(deck_id: int, start_file_exists: bool, raffle_list: list[dic
         "registered": registered,
         "deckOwner": deck_owner,
         "received_confirmed": received_confirmed,
+        "pairing_round": entry.get("pairing_round") if entry else None,
+        "pairing_table": entry.get("pairing_table") if entry else None,
+        "pairing_phase": entry.get("pairing_phase") if entry else None,
     }
     return hashlib.sha1(json.dumps(obj, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
 
@@ -868,6 +912,9 @@ async def clear_data():
         # Löschen von start.txt, falls sie existiert
         if Path("start.txt").exists():
             Path("start.txt").unlink()
+        # Löschen von pairings.json, falls sie existiert
+        if PAIRINGS_PATH.exists():
+            PAIRINGS_PATH.unlink()
         # Erstellen einer leeren raffle.json
         with FILE_PATH.open("w", encoding="utf-8") as f:
             json.dump([], f, ensure_ascii=False, indent=4)
@@ -896,6 +943,13 @@ async def customer_control_panel(request: Request):
     tooltip_items = []
     confirmed_count = 0
     total_decks = 0
+
+    raffle_list = _load_raffle_list()
+    all_confirmed = _all_received_confirmed(raffle_list) if start_file_exists else False
+    pair = _load_pairings() or {}
+    pairings_phase = pair.get("phase") or ("ready" if all_confirmed else None)
+    active_round = int(pair.get("active_round") or 0) if pair else 0
+    pairings_started = bool(pair) and active_round > 0
 
     if FILE_PATH.exists():
         try:
@@ -951,6 +1005,11 @@ async def customer_control_panel(request: Request):
             # neu
             "confirmed_count": confirmed_count,
             "tooltip_items": tooltip_items,
+
+            "all_confirmed": all_confirmed,
+            "pairings_started": pairings_started,
+            "pairings_phase": pairings_phase,
+            "active_round": active_round,
         }
     )
 
@@ -1423,6 +1482,87 @@ async def ws_endpoint(websocket: WebSocket):
         pass
     finally:
         ws_manager.disconnect(websocket, group)
+
+@app.post("/startPairings")
+async def start_pairings(num_pods: int = Form(...)):
+    async with RAFFLE_LOCK:
+        raffle_list = _load_raffle_list()
+
+        if not Path("start.txt").exists():
+            raise HTTPException(status_code=400, detail="Raffle noch nicht gestartet.")
+
+        if not _all_received_confirmed(raffle_list):
+            raise HTTPException(status_code=400, detail="Nicht alle Decks wurden bestätigt.")
+
+        players = _deckowners(raffle_list)
+        if len(players) < 3:
+            raise HTTPException(status_code=400, detail="Zu wenige Spieler.")
+
+        rounds = _build_rounds(players, int(num_pods), MAX_ROUNDS)
+
+        state = {
+            "pods": int(num_pods),
+            "players": players,
+            "rounds": rounds,
+            "active_round": 1,
+            "phase": "playing",
+        }
+        _atomic_write_pairings(state)
+
+        # Runde 1 in raffle.json eintragen
+        _apply_round_to_raffle(raffle_list, state, round_no=1)
+        _atomic_write_json(FILE_PATH, raffle_list)
+
+    await notify_state_change()
+    return RedirectResponse(url="/CCP", status_code=303)
+
+@app.post("/nextRound")
+async def next_round():
+    async with RAFFLE_LOCK:
+        state = _load_pairings()
+        if not state:
+            raise HTTPException(status_code=400, detail="Pairings wurden noch nicht gestartet.")
+
+        if state.get("phase") != "playing":
+            raise HTTPException(status_code=400, detail="Spielphase ist nicht aktiv.")
+
+        rounds = state.get("rounds") or []
+        active = int(state.get("active_round") or 1)
+
+        if active >= len(rounds):
+            # keine nächste Runde mehr -> bleibt bei letzter Runde, oder du könntest automatisch voting setzen
+            return RedirectResponse(url="/CCP", status_code=303)
+
+        active += 1
+        state["active_round"] = active
+        _atomic_write_pairings(state)
+
+        raffle_list = _load_raffle_list()
+        _apply_round_to_raffle(raffle_list, state, round_no=active)
+        _atomic_write_json(FILE_PATH, raffle_list)
+
+    await notify_state_change()
+    return RedirectResponse(url="/CCP", status_code=303)
+
+@app.post("/endPlayPhase")
+async def end_play_phase():
+    async with RAFFLE_LOCK:
+        state = _load_pairings()
+        if not state:
+            raise HTTPException(status_code=400, detail="Pairings wurden noch nicht gestartet.")
+
+        state["phase"] = "voting"
+        _atomic_write_pairings(state)
+
+        # optional: in raffle.json markieren
+        raffle_list = _load_raffle_list()
+        for e in raffle_list:
+            if e.get("deck_id") is not None:
+                e["pairing_phase"] = "voting"
+        _atomic_write_json(FILE_PATH, raffle_list)
+
+    await notify_state_change()
+    return RedirectResponse(url="/CCP", status_code=303)
 
 if __name__ == "__main__":
     uvicorn.run('main:app', port=8080, host="0.0.0.0", reload=True)
