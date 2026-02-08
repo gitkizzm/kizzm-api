@@ -70,6 +70,28 @@
             </form>
         {% endif %}
 
+        {% if existing_entry.pairing_phase == "voting" %}
+            <div class="status danger" style="margin-top: 12px;">
+                Spielphase beendet. Bitte jetzt das Voting starten.
+            </div>
+        {% elif existing_entry.pairing_round %}
+            <div class="status" style="margin-top: 12px;">
+                Runde {{ existing_entry.pairing_round }} – Tisch {{ existing_entry.pairing_table }}
+                <div style="margin-top: 8px;">
+                    <strong>Mitspieler:</strong>
+                    <div style="margin-top: 6px;">
+                        {% for p in existing_entry.pairing_players %}
+                            <div>{{ p }}</div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        {% elif start_file_exists and existing_entry.received_confirmed %}
+            <div class="status" style="margin-top: 12px;">
+                Bitte warte auf die Pairings.
+            </div>
+        {% endif %}
+
         {% else %}
         <p class="status danger">
             Dieses Deck wurde bereits registriert. Bitte warte bis der Raffle startet.

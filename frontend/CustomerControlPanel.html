@@ -11,7 +11,17 @@
         <h1>Control Panel</h1>
 
         {% if start_file_exists %}
-            <div class="status ok">Der Raffle ist gestartet</div>
+            {% if all_confirmed %}
+                <div class="status ok">Alle Decks wurden verteilt</div>
+            {% else %}
+                <div class="status ok">Der Raffle ist gestartet</div>
+            {% endif %}
+
+            {% if pairings_phase == "playing" and active_round > 0 %}
+                <div class="status">Runde {{ active_round }} läuft</div>
+            {% elif pairings_phase == "voting" %}
+                <div class="status danger">Spielphase beendet. Bitte jetzt das Voting starten.</div>
+            {% endif %}
         {% else %}
             <div class="status danger">Die Deckregistrierung läuft noch</div>
         {% endif %}
@@ -46,6 +56,31 @@
             {% else %}
                 <div class="status danger">Die Datei raffle.json existiert nicht.</div>
             {% endif %}
+        {% endif %}
+
+        {% if start_file_exists and all_confirmed %}
+            <div style="margin-top: 14px;">
+                {% if not pairings_started %}
+                    <form action="/startPairings" method="post" class="row" style="gap:10px; margin:0;">
+                        <label for="numPods">Anzahl Pods / Tische:</label>
+                        <input type="number" id="numPods" name="num_pods" min="1" step="1" value="2">
+
+                        <div class="btn-row" style="justify-content: flex-end;">
+                            <button type="submit">Pairings starten</button>
+                        </div>
+                    </form>
+                {% else %}
+                    <div class="btn-row" style="justify-content: space-between;">
+                        <form action="/endPlayPhase" method="post" style="margin:0;">
+                            <button type="submit">Spielphase beenden</button>
+                        </form>
+
+                        <form action="/nextRound" method="post" style="margin:0;">
+                            <button type="submit" {% if pairings_phase != "playing" %}disabled{% endif %}>Nächste Runde starten</button>
+                        </form>
+                    </div>
+                {% endif %}
+            </div>
         {% endif %}
 
         <div class="btn-row" style="justify-content: space-between;">
