@@ -958,74 +958,174 @@ async def clear_data():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Fehler beim Löschen der Dateien: {e}")
 
-@app.post("/debug")
-async def debug_fill_decks():
+def _debug_detect_phase(start_file_exists: bool, raffle_list: list[dict]) -> str:
     """
-    DEV-Helfer: Befüllt testweise deck_ids 1..8 mit zufälligen Commandern via Scryfall
-    und nutzt dafür die Namen aus teilnehmer.txt als deckersteller.
-
-    - überschreibt nur deck_ids 1..8 (andere Einträge bleiben erhalten)
-    - commander2 bleibt leer (None)
-    - received_confirmed = False
-    - deckOwner = None
+    Returns a simple phase string for the debug simulator.
+    Extend later when you add more event phases (pairings/voting/results...).
     """
-    participants_file = Path("teilnehmer.txt")
-    if not participants_file.exists():
-        raise HTTPException(status_code=400, detail="teilnehmer.txt nicht gefunden.")
+    if not start_file_exists:
+        return "registration_needed"
 
-    with participants_file.open("r", encoding="utf-8") as f:
-        names = [line.strip() for line in f.readlines() if line.strip()]
+    # start exists -> raffle was started
+    if not _all_received_confirmed(raffle_list):
+        return "confirm_needed"
 
-    if len(names) < 8:
-        raise HTTPException(
-            status_code=400,
-            detail=f"teilnehmer.txt enthält nur {len(names)} Namen, benötigt werden mindestens 8."
-        )
+    return "idle"
 
-    # randomize which participant gets which deck_id
-    shuffle(names)
-    selected_names = names[:8]
-    deck_ids = list(range(1, 9))
 
-    created_entries: list[dict] = []
-    seen_card_ids: set[str] = set()
+async def _debug_apply_step() -> dict:
+    """
+    Executes exactly one reasonable next step depending on current event state.
+    Returns a result dict for JSON/HTML output.
+    """
+    start_file_exists = Path("start.txt").exists()
 
-    # Pull 8 random commanders from Scryfall
-    for deck_id, deckersteller in zip(deck_ids, selected_names):
-        card = await _scryfall_random_commander(exclude_card_ids=seen_card_ids)
-        if not card:
-            raise HTTPException(status_code=502, detail="Konnte keinen zufälligen Commander von Scryfall laden.")
-
-        commander_name = card.get("name")
-        commander_id = card.get("id")
-        seen_card_ids.add(commander_id)
-
-        created_entries.append({
-            "deckersteller": deckersteller,
-            "commander": commander_name,
-            "commander_id": commander_id,
-            "commander2": None,
-            "commander2_id": None,
-            "deckUrl": None,
-            "deck_id": deck_id,
-            "deckOwner": None,
-            "received_confirmed": False,
-        })
-
-    # Write atomically + serialized (consistent with /submit)
     async with RAFFLE_LOCK:
-        existing = _load_raffle_list()
-        existing = [e for e in existing if e.get("deck_id") not in deck_ids]
-        existing.extend(created_entries)
-        _atomic_write_json(FILE_PATH, existing)
+        raffle_list = _load_raffle_list()
+        phase = _debug_detect_phase(start_file_exists, raffle_list)
 
+        # -------------------------
+        # Phase 1: Registration
+        # -------------------------
+        if phase == "registration_needed":
+            participants_file = Path("teilnehmer.txt")
+            if not participants_file.exists():
+                raise HTTPException(status_code=400, detail="teilnehmer.txt nicht gefunden.")
+
+            with participants_file.open("r", encoding="utf-8") as f:
+                names = [line.strip() for line in f.readlines() if line.strip()]
+
+            if len(names) < 8:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"teilnehmer.txt enthält nur {len(names)} Namen, benötigt werden mindestens 8."
+                )
+
+            shuffle(names)
+            selected_names = names[:8]
+            deck_ids = list(range(1, 9))
+
+            created_entries: list[dict] = []
+            seen_card_ids: set[str] = set()
+
+            for deck_id, deckersteller in zip(deck_ids, selected_names):
+                card = await _scryfall_random_commander(exclude_card_ids=seen_card_ids)
+                if not card:
+                    raise HTTPException(status_code=502, detail="Konnte keinen zufälligen Commander von Scryfall laden.")
+
+                commander_name = (card.get("name") or "").strip()
+                commander_id = (card.get("id") or "").strip()
+                if not commander_name or not commander_id:
+                    raise HTTPException(status_code=502, detail="Ungültige Scryfall-Antwort (name/id fehlt).")
+
+                seen_card_ids.add(commander_id)
+
+                created_entries.append({
+                    "deckersteller": deckersteller,
+                    "commander": commander_name,
+                    "commander_id": commander_id,
+                    "commander2": None,
+                    "commander2_id": None,
+                    "deckUrl": None,
+                    "deck_id": deck_id,
+                    "deckOwner": None,
+                    "received_confirmed": False
+                })
+
+            # überschreibt nur deck_ids 1..8
+            raffle_list = [e for e in raffle_list if e.get("deck_id") not in deck_ids]
+            raffle_list.extend(created_entries)
+            _atomic_write_json(FILE_PATH, raffle_list)
+
+            # WS notify after lock
+            return {
+                "ok": True,
+                "phase": phase,
+                "action": "filled_decks_1_to_8",
+                "filled_deck_ids": deck_ids,
+                "created_count": len(created_entries),
+                "created": created_entries,
+            }
+
+        # -------------------------
+        # Phase 2: Confirm received
+        # -------------------------
+        if phase == "confirm_needed":
+            updated_ids: list[int] = []
+            for e in raffle_list:
+                did = e.get("deck_id")
+                if did is None:
+                    continue
+                # nur registrierte deck_ids
+                if e.get("received_confirmed") is True:
+                    continue
+                e["received_confirmed"] = True
+                updated_ids.append(int(did))
+
+            if updated_ids:
+                _atomic_write_json(FILE_PATH, raffle_list)
+
+            return {
+                "ok": True,
+                "phase": phase,
+                "action": "confirmed_all_pending",
+                "updated_deck_ids": sorted(updated_ids),
+                "updated_count": len(updated_ids),
+            }
+
+        # -------------------------
+        # Idle (nothing to do yet)
+        # -------------------------
+        return {
+            "ok": True,
+            "phase": phase,
+            "action": "noop",
+            "message": "Kein weiterer Debug-Schritt definiert (aktuell: Registrierung → Bestätigen).",
+        }
+
+@app.get("/debug", response_class=HTMLResponse)
+async def debug_get():
+    """
+    Browser-friendly debug step runner.
+    """
+    result = await _debug_apply_step()
     await notify_state_change()
 
-    return JSONResponse({
-        "ok": True,
-        "filled_deck_ids": deck_ids,
-        "created": created_entries,
-    })
+    # simple HTML so you can keep it open in a tab and reload
+    lines = [
+        "<html><head><meta charset='utf-8'><title>/debug</title></head><body style='font-family: system-ui; padding: 16px;'>",
+        "<h2>/debug</h2>",
+        f"<p><strong>phase:</strong> {result.get('phase')}</p>",
+        f"<p><strong>action:</strong> {result.get('action')}</p>",
+    ]
+
+    if result.get("action") == "filled_decks_1_to_8":
+        lines.append(f"<p>created_count: {result.get('created_count')}</p>")
+        lines.append("<ul>")
+        for e in (result.get("created") or []):
+            lines.append(f"<li>deck_id {e.get('deck_id')}: {e.get('deckersteller')} — {e.get('commander')}</li>")
+        lines.append("</ul>")
+
+    if result.get("action") == "confirmed_all_pending":
+        lines.append(f"<p>updated_count: {result.get('updated_count')}</p>")
+        lines.append(f"<p>updated_deck_ids: {result.get('updated_deck_ids')}</p>")
+
+    if result.get("message"):
+        lines.append(f"<p>{result.get('message')}</p>")
+
+    lines.append("<p style='margin-top:16px; opacity:0.7;'>Reload this page to advance the next step.</p>")
+    lines.append("</body></html>")
+    return HTMLResponse("\n".join(lines))
+
+
+@app.post("/debug")
+async def debug_post():
+    """
+    JSON-friendly debug step runner (keeps compatibility with your current setup).
+    """
+    result = await _debug_apply_step()
+    await notify_state_change()
+    return JSONResponse(result)
 
 @app.get("/CCP", response_class=HTMLResponse)
 async def customer_control_panel(request: Request):
