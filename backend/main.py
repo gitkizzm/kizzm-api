@@ -643,6 +643,38 @@ async def _scryfall_get_card_by_id(card_id: str) -> dict | None:
     except Exception:
         return None
 
+async def _scryfall_random_commander(exclude_card_ids: set[str] | None = None, max_tries: int = 25) -> dict | None:
+    """
+    Picks a random commander card from Scryfall.
+    Returns the full card JSON or None.
+
+    exclude_card_ids: avoids duplicates by Scryfall card id
+    """
+    exclude_card_ids = exclude_card_ids or set()
+
+    # Avoid Backgrounds (they are not valid "single commander" in your UI logic anyway)
+    # Keep it simple: random commander-legal card, paper, not background
+    scry_q = "game:paper is:commander -t:background"
+    url = f"{SCRYFALL_BASE}/cards/random?q={quote_plus(scry_q)}"
+
+    try:
+        async with httpx.AsyncClient(timeout=SCRYFALL_TIMEOUT, headers=SCRYFALL_HEADERS) as client:
+            for _ in range(max_tries):
+                r = await client.get(url)
+                if r.status_code != 200:
+                    continue
+                card = r.json()
+                cid = (card.get("id") or "").strip()
+                name = (card.get("name") or "").strip()
+                if not cid or not name:
+                    continue
+                if cid in exclude_card_ids:
+                    continue
+                return card
+    except Exception:
+        return None
+
+    return None
 
 def _t(card: dict) -> str:
     return (card.get("type_line") or "").lower()
@@ -751,7 +783,7 @@ async def submit_form(
     Verarbeitet das Formular, prüft die DeckID und den Deckersteller, und fügt neue Datensätze hinzu.
     """
     try:
-                # Konvertiere leere Strings zu None
+        # Konvertiere leere Strings zu None
         deckUrl = deckUrl or None
 
         # commander can be string or (buggy) dict from frontend; normalize robustly
@@ -772,7 +804,6 @@ async def submit_form(
         if isinstance(commander2_id, dict):
             commander2_id = commander2_id.get("id") or commander2_id.get("value") or ""
         commander2_id = str(commander2_id or "").strip() or None
-
 
         def _redirect_back(err_msg: str, field_errors_dict: dict | None = None):
             fe = ""
@@ -883,7 +914,7 @@ async def submit_form(
 
             # Atomisch schreiben
             _atomic_write_json(FILE_PATH, data_list)
-        
+
         await notify_state_change()
 
         # Erfolgsseite anzeigen
@@ -926,6 +957,75 @@ async def clear_data():
     
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Fehler beim Löschen der Dateien: {e}")
+
+@app.post("/debug")
+async def debug_fill_decks():
+    """
+    DEV-Helfer: Befüllt testweise deck_ids 1..8 mit zufälligen Commandern via Scryfall
+    und nutzt dafür die Namen aus teilnehmer.txt als deckersteller.
+
+    - überschreibt nur deck_ids 1..8 (andere Einträge bleiben erhalten)
+    - commander2 bleibt leer (None)
+    - received_confirmed = False
+    - deckOwner = None
+    """
+    participants_file = Path("teilnehmer.txt")
+    if not participants_file.exists():
+        raise HTTPException(status_code=400, detail="teilnehmer.txt nicht gefunden.")
+
+    with participants_file.open("r", encoding="utf-8") as f:
+        names = [line.strip() for line in f.readlines() if line.strip()]
+
+    if len(names) < 8:
+        raise HTTPException(
+            status_code=400,
+            detail=f"teilnehmer.txt enthält nur {len(names)} Namen, benötigt werden mindestens 8."
+        )
+
+    # randomize which participant gets which deck_id
+    shuffle(names)
+    selected_names = names[:8]
+    deck_ids = list(range(1, 9))
+
+    created_entries: list[dict] = []
+    seen_card_ids: set[str] = set()
+
+    # Pull 8 random commanders from Scryfall
+    for deck_id, deckersteller in zip(deck_ids, selected_names):
+        card = await _scryfall_random_commander(exclude_card_ids=seen_card_ids)
+        if not card:
+            raise HTTPException(status_code=502, detail="Konnte keinen zufälligen Commander von Scryfall laden.")
+
+        commander_name = card.get("name")
+        commander_id = card.get("id")
+        seen_card_ids.add(commander_id)
+
+        created_entries.append({
+            "deckersteller": deckersteller,
+            "commander": commander_name,
+            "commander_id": commander_id,
+            "commander2": None,
+            "commander2_id": None,
+            "deckUrl": None,
+            "deck_id": deck_id,
+            "deckOwner": None,
+            "received_confirmed": False,
+        })
+
+    # Write atomically + serialized (consistent with /submit)
+    async with RAFFLE_LOCK:
+        existing = _load_raffle_list()
+        existing = [e for e in existing if e.get("deck_id") not in deck_ids]
+        existing.extend(created_entries)
+        _atomic_write_json(FILE_PATH, existing)
+
+    await notify_state_change()
+
+    return JSONResponse({
+        "ok": True,
+        "filled_deck_ids": deck_ids,
+        "created": created_entries,
+    })
 
 @app.get("/CCP", response_class=HTMLResponse)
 async def customer_control_panel(request: Request):
