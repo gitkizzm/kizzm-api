@@ -958,19 +958,207 @@ async def clear_data():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Fehler beim Löschen der Dateien: {e}")
 
-def _debug_detect_phase(start_file_exists: bool, raffle_list: list[dict]) -> str:
+def _debug_has_minimal_registrations(raffle_list: list[dict], min_decks: int = 3) -> bool:
     """
-    Returns a simple phase string for the debug simulator.
-    Extend later when you add more event phases (pairings/voting/results...).
+    True if we have at least min_decks entries that look like a valid registration
+    (start.txt not yet present).
+    """
+    decks = [e for e in raffle_list if e.get("deck_id") is not None]
+    if len(decks) < min_decks:
+        return False
+    for e in decks:
+        if not (e.get("deckersteller") and e.get("commander")):
+            return False
+    return True
+
+
+def _debug_pick_num_pods(n_players: int) -> int:
+    # Simple heuristic: pods of up to 4 players.
+    return max(1, (n_players + 3) // 4)
+
+
+def _debug_detect_phase(start_file_exists: bool, raffle_list: list[dict], pair_state: dict | None) -> str:
+    """
+    Next-step state machine for /debug.
+    Each call advances exactly ONE step.
+
+    Current phases:
+      - registration_needed
+      - raffle_start_needed
+      - confirm_needed
+      - pairings_start_needed
+      - next_round_or_end_needed
+      - idle
     """
     if not start_file_exists:
+        # before raffle: either fill test registrations or start raffle if possible
+        if _debug_has_minimal_registrations(raffle_list, min_decks=3):
+            return "raffle_start_needed"
         return "registration_needed"
 
-    # start exists -> raffle was started
+    # raffle already started
     if not _all_received_confirmed(raffle_list):
         return "confirm_needed"
 
+    # all confirmed -> pairings/rounds
+    if not pair_state:
+        return "pairings_start_needed"
+
+    phase = (pair_state.get("phase") or "").strip().lower()
+    if phase == "playing":
+        return "next_round_or_end_needed"
+
     return "idle"
+
+
+def _debug_start_raffle_in_memory(raffle_list: list[dict]) -> dict:
+    """
+    Equivalent of /startRaffle (but returns JSON result).
+    Assumes RAFFLE_LOCK is held by caller.
+    """
+    # create start.txt
+    start_file = Path("start.txt")
+    with start_file.open("w", encoding="utf-8") as f:
+        f.write("")  # empty file
+
+    deckersteller_list = [
+        e.get("deckersteller")
+        for e in raffle_list
+        if e.get("deckersteller")
+    ]
+    unique_decks = list(dict.fromkeys(deckersteller_list))
+    if len(unique_decks) < 3:
+        raise HTTPException(status_code=400, detail="Raffle kann erst ab 3 registrierten Decks gestartet werden.")
+
+    cOrder, gOrder = shuffle_decks(unique_decks)
+    for creator, new_owner in zip(cOrder, gOrder):
+        update_deck_owner(creator, new_owner)
+
+    return {
+        "ok": True,
+        "action": "raffle_started",
+        "assigned_count": len(unique_decks),
+    }
+
+
+def _debug_start_pairings_in_memory(raffle_list: list[dict]) -> dict:
+    """
+    Equivalent of /startPairings, but chooses num_pods automatically.
+    Assumes RAFFLE_LOCK is held by caller.
+    """
+    if not Path("start.txt").exists():
+        raise HTTPException(status_code=400, detail="Raffle noch nicht gestartet.")
+    if not _all_received_confirmed(raffle_list):
+        raise HTTPException(status_code=400, detail="Nicht alle Decks wurden bestätigt.")
+
+    players = _deckowners(raffle_list)
+    if len(players) < 3:
+        raise HTTPException(status_code=400, detail="Zu wenige Spieler.")
+
+    num_pods = _debug_pick_num_pods(len(players))
+    rounds = _build_rounds(players, int(num_pods), MAX_ROUNDS)
+
+    state = {
+        "pods": int(num_pods),
+        "players": players,
+        "rounds": rounds,
+        "active_round": 1,
+        "phase": "playing",
+    }
+    _atomic_write_pairings(state)
+
+    # Runde 1 in raffle.json eintragen
+    _apply_round_to_raffle(raffle_list, state, round_no=1)
+    _atomic_write_json(FILE_PATH, raffle_list)
+
+    return {
+        "ok": True,
+        "action": "pairings_started",
+        "pods": int(num_pods),
+        "active_round": 1,
+        "phase": "playing",
+    }
+
+
+def _debug_next_round_or_end_in_memory(raffle_list: list[dict], state: dict) -> dict:
+    """
+    Advances rounds in 'playing' phase.
+
+    Requested special behavior:
+      - When Round 4 is completed (i.e. active_round == 4 and /debug is called),
+        /debug starts Round 5 and ENDS the rounds/play phase in the SAME step (-> voting).
+
+    Assumes RAFFLE_LOCK is held by caller.
+    """
+    if (state.get("phase") or "").strip().lower() != "playing":
+        return {"ok": True, "action": "noop", "message": "Spielphase ist nicht aktiv."}
+
+    rounds = state.get("rounds") or []
+    active = int(state.get("active_round") or 1)
+
+    # If no configured rounds (shouldn't happen), end to voting.
+    if not rounds:
+        state["phase"] = "voting"
+        _atomic_write_pairings(state)
+        for e in raffle_list:
+            if e.get("deck_id") is not None:
+                e["pairing_phase"] = "voting"
+        _atomic_write_json(FILE_PATH, raffle_list)
+        return {"ok": True, "action": "ended_play_phase", "active_round": active, "phase": "voting"}
+
+    # If already beyond last configured round -> end.
+    if active >= len(rounds):
+        state["phase"] = "voting"
+        _atomic_write_pairings(state)
+        for e in raffle_list:
+            if e.get("deck_id") is not None:
+                e["pairing_phase"] = "voting"
+        _atomic_write_json(FILE_PATH, raffle_list)
+        return {"ok": True, "action": "ended_play_phase", "active_round": active, "phase": "voting"}
+
+    # Normal round progression for rounds 1..3
+    if active < 4:
+        active += 1
+        state["active_round"] = active
+        _atomic_write_pairings(state)
+        _apply_round_to_raffle(raffle_list, state, round_no=active)
+        _atomic_write_json(FILE_PATH, raffle_list)
+        return {"ok": True, "action": "started_next_round", "active_round": active, "phase": "playing"}
+
+    # Special: active == 4 -> start round 5 (if available) AND end play phase (-> voting)
+    if active == 4:
+        next_round = 5
+        if next_round <= len(rounds):
+            state["active_round"] = next_round
+            _apply_round_to_raffle(raffle_list, state, round_no=next_round)
+        else:
+            # If we don't have a round 5 configured, keep round 4 as active.
+            next_round = active
+
+        state["phase"] = "voting"
+        _atomic_write_pairings(state)
+
+        for e in raffle_list:
+            if e.get("deck_id") is not None:
+                e["pairing_phase"] = "voting"
+
+        _atomic_write_json(FILE_PATH, raffle_list)
+
+        return {
+            "ok": True,
+            "action": "started_round_5_and_ended_play_phase",
+            "active_round": next_round,
+            "phase": "voting",
+        }
+
+    # Fallback: end play phase
+    state["phase"] = "voting"
+    _atomic_write_pairings(state)
+    for e in raffle_list:
+        if e.get("deck_id") is not None:
+            e["pairing_phase"] = "voting"
+    _atomic_write_json(FILE_PATH, raffle_list)
+    return {"ok": True, "action": "ended_play_phase", "active_round": active, "phase": "voting"}
 
 
 async def _debug_apply_step() -> dict:
@@ -982,7 +1170,8 @@ async def _debug_apply_step() -> dict:
 
     async with RAFFLE_LOCK:
         raffle_list = _load_raffle_list()
-        phase = _debug_detect_phase(start_file_exists, raffle_list)
+        pair_state = _load_pairings()
+        phase = _debug_detect_phase(start_file_exists, raffle_list, pair_state)
 
         # -------------------------
         # Phase 1: Registration
@@ -1037,7 +1226,6 @@ async def _debug_apply_step() -> dict:
             raffle_list.extend(created_entries)
             _atomic_write_json(FILE_PATH, raffle_list)
 
-            # WS notify after lock
             return {
                 "ok": True,
                 "phase": phase,
@@ -1048,6 +1236,14 @@ async def _debug_apply_step() -> dict:
             }
 
         # -------------------------
+        # Phase 1b: Start raffle
+        # -------------------------
+        if phase == "raffle_start_needed":
+            result = _debug_start_raffle_in_memory(raffle_list)
+            result["phase"] = phase
+            return result
+
+        # -------------------------
         # Phase 2: Confirm received
         # -------------------------
         if phase == "confirm_needed":
@@ -1056,7 +1252,6 @@ async def _debug_apply_step() -> dict:
                 did = e.get("deck_id")
                 if did is None:
                     continue
-                # nur registrierte deck_ids
                 if e.get("received_confirmed") is True:
                     continue
                 e["received_confirmed"] = True
@@ -1074,14 +1269,34 @@ async def _debug_apply_step() -> dict:
             }
 
         # -------------------------
+        # Phase 3: Start pairings / round 1
+        # -------------------------
+        if phase == "pairings_start_needed":
+            result = _debug_start_pairings_in_memory(raffle_list)
+            result["phase"] = phase
+            return result
+
+        # -------------------------
+        # Phase 4: Advance rounds / end play phase after round 4
+        # -------------------------
+        if phase == "next_round_or_end_needed":
+            st = _load_pairings()
+            if not st:
+                return {"ok": True, "phase": phase, "action": "noop", "message": "Pairings-State fehlt."}
+            result = _debug_next_round_or_end_in_memory(raffle_list, st)
+            result["phase"] = phase
+            return result
+
+        # -------------------------
         # Idle (nothing to do yet)
         # -------------------------
         return {
             "ok": True,
             "phase": phase,
             "action": "noop",
-            "message": "Kein weiterer Debug-Schritt definiert (aktuell: Registrierung → Bestätigen).",
+            "message": "Kein weiterer Debug-Schritt definiert (aktuell: Registrierung → Raffle-Start → Bestätigen → Pairings/Runden → Voting).",
         }
+
 
 @app.get("/debug", response_class=HTMLResponse)
 async def debug_get():
@@ -1109,6 +1324,21 @@ async def debug_get():
     if result.get("action") == "confirmed_all_pending":
         lines.append(f"<p>updated_count: {result.get('updated_count')}</p>")
         lines.append(f"<p>updated_deck_ids: {result.get('updated_deck_ids')}</p>")
+
+
+    if result.get("action") == "raffle_started":
+        lines.append(f"<p>assigned_count: {result.get('assigned_count')}</p>")
+
+    if result.get("action") == "pairings_started":
+        lines.append(f"<p>pods: {result.get('pods')}</p>")
+        lines.append(f"<p>active_round: {result.get('active_round')}</p>")
+        lines.append(f"<p>phase: {result.get('phase')}</p>")
+
+    if result.get("action") in ("started_next_round", "started_round_5_and_ended_play_phase", "ended_play_phase"):
+        if result.get("active_round") is not None:
+            lines.append(f"<p>active_round: {result.get('active_round')}</p>")
+        if result.get("phase"):
+            lines.append(f"<p>phase: {result.get('phase')}</p>")
 
     if result.get("message"):
         lines.append(f"<p>{result.get('message')}</p>")
