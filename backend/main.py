@@ -18,7 +18,7 @@ import httpx
 import os
 #python -m uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 
-# --- Scryfall commander suggest config ---
+#--- Scryfall commander suggest config ---
 SCRYFALL_BASE = "https://api.scryfall.com"
 SUGGEST_MIN_CHARS = 3          # 2 oder 3 – du wolltest 2–3; Default: 3
 SUGGEST_LIMIT = 15             # Smartphone-freundlich
