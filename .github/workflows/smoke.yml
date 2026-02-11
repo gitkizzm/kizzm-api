@@ -1,0 +1,32 @@
+name: smoke
+
+on:
+  pull_request:
+    branches: [ "chatGBDEE" ]
+  push:
+    branches: [ "chatGBDEE" ]
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    container:
+      image: python:3.10-slim
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies (best effort)
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Compile backend (syntax check)
+        run: |
+          python -m compileall backend
+
+      - name: Import FastAPI app (import smoke)
+        run: |
+          python -c "from backend.main import app; print('ok')"
