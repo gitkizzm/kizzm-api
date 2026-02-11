@@ -1,12 +1,20 @@
-FROM python:3.9
+# Basisimage
+FROM python:3.10-slim
 
-WORKDIR /tst-api
+# Arbeitsverzeichnis erstellen
+WORKDIR /app
 
+# Abhängigkeiten kopieren und installieren
 COPY requirements.txt .
-COPY ./src ./src
+RUN pip install --no-cache-dir -r requirements.txt
 
-RUN pip install -r requirements.txt
+# Anwendungscode kopieren
+#COPY backend ./backend
+#COPY frontend ./frontend
+COPY . .
 
+# Port definieren
 EXPOSE 8080
 
-CMD ["python", "./src/main.py"]
+# Startbefehl
+CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8080"]

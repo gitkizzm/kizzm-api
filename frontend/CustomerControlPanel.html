@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CustomerControlPanel</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <div class="glass-card">
+        <h1>Control Panel</h1>
+
+        {% if start_file_exists %}
+            {% if all_confirmed %}
+                <div class="status ok">Alle Decks wurden verteilt</div>
+            {% else %}
+                <div class="status ok">Der Raffle ist gestartet</div>
+            {% endif %}
+
+            {% if pairings_phase == "playing" and active_round > 0 %}
+                <div class="status">Runde {{ active_round }} läuft</div>
+            {% elif pairings_phase == "voting" %}
+                <div class="status danger">Spielphase beendet. Bitte jetzt das Voting starten.</div>
+            {% endif %}
+        {% else %}
+            <div class="status danger">Die Deckregistrierung läuft noch</div>
+        {% endif %}
+
+        {% if deck_count > 0 %}
+            <div class="status status-inline">
+                {% if start_file_exists %}
+                    {{ confirmed_count }} von {{ deck_count }} der Decks wurden ausgeteilt.
+                {% else %}
+                    Es sind {{ deck_count }} unterschiedliche Decks registriert.
+                {% endif %}
+
+                <span class="info-wrap">
+                    <button type="button" class="info-btn" aria-label="Info">i</button>
+                    <div class="info-tooltip">
+                        {% for it in tooltip_items %}
+                            <div class="tooltip-item">
+                                {% if start_file_exists %}
+                                    <span class="recv-icon {% if it.received_confirmed %}is-ok{% else %}is-pending{% endif %}">
+                                        {% if it.received_confirmed %}✓{% else %}?{% endif %}
+                                    </span>
+                                {% endif %}
+                                {{ it.name }}
+                            </div>
+                        {% endfor %}
+                    </div>
+                </span>
+            </div>
+        {% else %}
+            {% if deck_count == 0 %}
+                <div class="status danger">Es sind noch keine Decks eingetragen.</div>
+            {% else %}
+                <div class="status danger">Die Datei raffle.json existiert nicht.</div>
+            {% endif %}
+        {% endif %}
+
+        {% if start_file_exists and all_confirmed %}
+            <div style="margin-top: 14px;">
+                {% if not pairings_started %}
+                    <form action="/startPairings" method="post" class="row" style="gap:10px; margin:0;">
+                        <label for="numPods">Anzahl Pods / Tische:</label>
+                        <input type="number" id="numPods" name="num_pods" min="1" step="1" value="2">
+                        <label for="hosts">Hosts (Startplätze):</label>
+                        <select id="hosts" name="hosts" multiple size="6" style="min-width: 220px;">
+                            {% for p in players %}
+                                <option value="{{ p }}" {% if p in selected_hosts %}selected{% endif %}>{{ p }}</option>
+                            {% endfor %}
+                        </select>
+                        <div class="status" style="margin:0; font-size: 0.95em;">
+                            Optional: Wähle pro Tisch einen Host aus. Hosts werden in Runde 1 zuerst auf verschiedene Tische gesetzt.
+                        </div>
+
+
+                        <div class="btn-row" style="justify-content: flex-end;">
+                            <button type="submit">Pairings starten</button>
+                        </div>
+                    </form>
+                {% else %}
+                    <div class="btn-row" style="justify-content: space-between;">
+                        <form action="/endPlayPhase" method="post" style="margin:0;">
+                            <button type="submit">Spielphase beenden</button>
+                        </form>
+
+                        <form action="/nextRound" method="post" style="margin:0;">
+                            <button type="submit" {% if pairings_phase != "playing" %}disabled{% endif %}>Nächste Runde starten</button>
+                        </form>
+                    </div>
+                {% endif %}
+            </div>
+        {% endif %}
+
+        <div class="btn-row" style="justify-content: space-between;">
+            <!-- Clear wird erst nach Confirm abgeschickt -->
+            <form id="clearForm" action="/clear" method="post" style="margin:0;">
+                <button type="button" id="openClearModal">Daten löschen</button>
+            </form>
+
+            <form action="/startRaffle" method="post" style="margin:0;">
+                <button type="submit" {% if deck_count < 3 or start_file_exists %}disabled{% endif %}>
+                    Raffle starten
+                </button>
+            </form>
+        </div>
+
+    </div>
+
+    <!-- Confirm Modal (muss außerhalb der .glass-card liegen wegen backdrop-filter) -->
+    <div class="modal-overlay" id="clearModal" aria-hidden="true">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="clearModalTitle">
+            <h2 id="clearModalTitle">Wirklich löschen?</h2>
+            <p class="status danger" style="margin-top: 10px;">
+                Achtung: Dadurch werden die aktuellen Registrierungsdaten gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.
+            </p>
+
+            <div class="modal-actions">
+                <button type="button" class="btn-ghost" id="cancelClear">Abbrechen</button>
+                <button type="button" class="btn-danger" id="confirmClear">Ja, löschen</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/ccp.js" defer></script>
+
+</body>
+</html>

@@ -1,1 +1,4 @@
 *.json
+start.txt
+*.pyc
+fix.patch

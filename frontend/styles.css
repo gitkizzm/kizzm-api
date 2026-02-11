@@ -1,0 +1,595 @@
+/* =========================================================
+   Root variables (werden teilweise per JS überschrieben)
+   ========================================================= */
+:root{
+  --bg-image: none;              /* url("...") via JS */
+  --bg-zoom: 1.12;               /* Default: leicht reinzoomen */
+  --glass: rgba(255,255,255,0.14);
+  --glass-border: rgba(255,255,255,0.22);
+  --text: rgba(255,255,255,0.92);
+  --muted: rgba(255,255,255,0.74);
+  --danger: rgba(255,120,120,0.95);
+  --success: rgba(140,255,170,0.95);
+}
+
+/* =========================================================
+   Page / Background
+   ========================================================= */
+html, body{
+  margin: 0;
+  padding: 0;
+}
+
+body{
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* Background image layer */
+body::before{
+  content: "";
+  position: fixed;
+  inset: -20px; /* bleed for blur edges */
+  background-image: var(--bg-image);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  transform: scale(var(--bg-zoom));
+  filter: blur(0px) saturate(1.05);
+  opacity: 0.92;
+  z-index: -2;
+}
+
+/* Dark overlay for readability */
+body::after{
+  content: "";
+  position: fixed;
+  inset: 0;
+  background:
+    radial-gradient(
+      1200px 700px at 20% 10%,
+      rgba(255,255,255,0.10),
+      transparent 55%
+    ),
+    linear-gradient(
+      to bottom,
+      rgba(0,0,0,0.35),
+      rgba(0,0,0,0.62)
+    );
+  z-index: -1;
+}
+
+/* =========================================================
+   Glass Card
+   ========================================================= */
+.glass-card{
+  width: min(640px, calc(100vw - 28px));
+  margin: 14px;
+  border-radius: 20px;
+
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(14px);
+
+  box-shadow: 0 18px 60px rgba(0,0,0,0.45);
+  padding: 22px 18px;
+}
+
+/* =========================================================
+   Typography
+   ========================================================= */
+h1{
+  margin: 4px 0 18px;
+  font-size: 34px;
+  letter-spacing: 0.2px;
+}
+
+/* =========================================================
+   Status messages
+   ========================================================= */
+.status{
+  margin: 0 0 18px;
+  padding: 12px 12px;
+  border-radius: 12px;
+  background: rgba(0,0,0,0.25);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: var(--muted);
+}
+
+.status.danger{
+  color: var(--danger);
+  font-weight: 700;
+}
+
+.status.ok{
+  color: var(--success);
+  font-weight: 700;
+}
+
+/* =========================================================
+   Form elements
+   ========================================================= */
+label{
+  display: block;
+  margin: 14px 0 8px;
+  font-weight: 650;
+}
+
+select,
+input{
+  width: 100%;
+  box-sizing: border-box;
+
+  padding: 12px 12px;
+  border-radius: 12px;
+
+  border: 1px solid rgba(255,255,255,0.22);
+  background: rgba(255,255,255,0.12);
+  color: var(--text);
+
+  outline: none;
+}
+
+/* native select options (browser dropdown) */
+select option{
+  color: #111;
+}
+
+input::placeholder{
+  color: rgba(255,255,255,0.55);
+}
+
+/* =========================================================
+   Layout helpers
+   ========================================================= */
+.row{
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+.btn-row{
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 18px;
+}
+
+/* =========================================================
+   Buttons
+   ========================================================= */
+button{
+  border: 1px solid rgba(255,255,255,0.22);
+  background: rgba(255,255,255,0.14);
+  color: var(--text);
+
+  padding: 11px 16px;
+  border-radius: 12px;
+
+  cursor: pointer;
+}
+
+button[type="submit"]{
+  background: rgba(90,140,255,0.35);
+  border-color: rgba(90,140,255,0.55);
+  font-weight: 700;
+}
+
+button:disabled{
+  background: rgba(160,160,160,0.25);
+  border-color: rgba(160,160,160,0.35);
+  color: rgba(255,255,255,0.6);
+  cursor: not-allowed;
+}
+
+button:not(:disabled):hover{
+  background: rgba(107, 191, 224, 0.75);
+}
+
+/* =========================================================
+   Commander autocomplete
+   ========================================================= */
+.suggest-wrap{
+  position: relative;
+}
+
+.suggest-box{
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 6px);
+
+  border-radius: 14px;
+  overflow: hidden;
+
+  background: rgba(20,20,30,0.62);
+  border: 1px solid rgba(255,255,255,0.20);
+
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+
+  box-shadow: 0 14px 40px rgba(0,0,0,0.35);
+
+  display: none;
+  max-height: 240px;
+  overflow-y: auto;
+  z-index: 20;
+}
+
+.suggest-item{
+  padding: 12px 12px;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.suggest-item:hover{
+  background: rgba(255,255,255,0.10);
+}
+
+/* Commander input spinner */
+.commander-input {
+  padding-right: 42px; /* Platz für Spinner rechts */
+}
+
+.input-spinner {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  width: 16px;
+  height: 16px;
+  transform: translateY(-50%);
+  border-radius: 50%;
+
+  border: 2px solid rgba(255,255,255,0.28);
+  border-top-color: rgba(255,255,255,0.85);
+
+  opacity: 0;
+  pointer-events: none;
+
+  animation: spin 0.8s linear infinite;
+}
+
+.input-spinner.show {
+  opacity: 1;
+}
+
+@keyframes spin {
+  to { transform: translateY(-50%) rotate(360deg); }
+}
+
+/* =========================================================
+   CCP Info Tooltip
+   ========================================================= */
+
+.status-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.info-wrap{
+  position: relative;
+  display: inline-flex;      /* wichtig */
+  margin-left: auto;
+}
+
+.info-btn {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.35);
+  background: rgba(255,255,255,0.18);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+}
+
+.info-tooltip {
+  position: absolute;
+  top: 50%;
+  right: calc(100% + 10px);   /* links vom Info-Button */
+  transform: translateY(-50%);
+
+  padding: 10px 12px;
+  border-radius: 12px;
+
+  background: rgba(20,20,30,0.75);
+  border: 1px solid rgba(255,255,255,0.22);
+
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+
+  box-shadow: 0 12px 40px rgba(0,0,0,0.45);
+
+  display: none;
+  z-index: 50;
+}
+
+
+.tooltip-item {
+  padding: 2px 0;
+  white-space: nowrap;
+}
+
+.info-wrap:hover .info-tooltip,
+.info-wrap:focus-within .info-tooltip {
+  display: block;
+}
+
+/* =========================================================
+   Confirm Modal (Glass Style)
+   ========================================================= */
+.modal-overlay{
+  position: fixed;
+  inset: 0;
+
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+
+  z-index: 9999;
+
+  /* starker Fokus-Dimmer */
+  background: rgba(0,0,0,0.65);
+
+  /* starker Blur auf allem darunter */
+  backdrop-filter: blur(14px) saturate(0.9);
+  -webkit-backdrop-filter: blur(14px) saturate(0.9);
+}
+
+.modal-overlay.show{
+  display: flex;
+}
+
+.modal{
+  width: min(560px, calc(100vw - 28px));
+  border-radius: 20px;
+  padding: 22px 20px;
+
+  /* klarer, fast „solid“ */
+  background: rgba(22, 22, 22, 0.37);
+  border: 1px solid rgba(255,255,255,0.35);
+
+  box-shadow:
+    0 24px 80px rgba(0,0,0,0.85),
+    inset 0 1px 0 rgba(255,255,255,0.08);
+}
+
+.modal .status.danger{
+  background: rgba(255, 80, 80, 0.18);
+  border-color: rgba(255, 80, 80, 0.55);
+  font-weight: 700;
+}
+
+.modal h2{
+  margin: 4px 0 6px;
+  font-size: 22px;
+  letter-spacing: 0.2px;
+  color: var(--text);
+}
+
+.modal-actions{
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 14px;
+}
+
+.btn-ghost{
+  background: rgba(255,255,255,0.10);
+  border-color: rgba(255,255,255,0.22);
+  font-weight: 700;
+}
+
+.btn-danger{
+  background: rgba(255,120,120,0.25);
+  border-color: rgba(255,120,120,0.55);
+  font-weight: 800;
+}
+
+.btn-danger:not(:disabled):hover{
+  background: rgba(255,120,120,0.40);
+}
+
+.field-error{
+  margin-top: 6px;
+  font-size: 0.95rem;
+  line-height: 1.25rem;
+  color: rgba(255, 120, 120, 0.95);
+}
+
+/* =========================
+   3D Card Preview (fixed under address bar)
+   ========================= */
+
+.glass-card.has-card-preview{
+  position: relative;
+  /* Statt padding-top: wir schieben die card nach unten, aber lassen overlap zu */
+  margin-top: 154px;
+}
+
+/* Fixiert unter Browser-UI / Safe Area */
+.card-preview{
+  position: fixed;
+  left: 50%;
+  top: max(24px, calc(env(safe-area-inset-top) + 24px));
+  transform: translateX(-50%);
+  z-index: 50;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(14px, 3vw, 28px);
+  pointer-events: none;
+
+  perspective: 900px;
+}
+
+/* Layout-State */
+/*
+.card-preview.is-single{}
+.card-preview.is-pair{}
+*/
+
+.card3d{
+  width: clamp(130px, 22vw, 190px);
+  aspect-ratio: 5 / 7;
+  position: relative;
+  transform-style: preserve-3d;
+  border-radius: 0px;
+  filter: drop-shadow(0 14px 28px rgba(0,0,0,0.35));
+  will-change: transform;
+
+  animation: cardFloat 5.2s ease-in-out infinite;
+}
+
+/* Single vs Pair Standwinkel */
+.card-preview.is-single .card3d.slot1{
+  transform: rotateX(10deg) rotateY(-10deg);
+}
+
+.card-preview.is-pair .card3d.slot1{
+  transform: rotateX(10deg) rotateY(-16deg) translateX(-2px);
+}
+
+.card-preview.is-pair .card3d.slot2{
+  transform: rotateX(10deg) rotateY(16deg) translateX(2px);
+}
+
+.card3d.is-hidden{ display: none; }
+
+.card3d-face{
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08);
+}
+
+.card3d-face.front{
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transform: translateZ(1px);
+}
+
+.card3d-face.back{
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transform: rotateY(180deg) translateZ(1px);
+}
+
+@keyframes cardFloat{
+  0%   { transform: translateY(0px) rotateX(10deg) rotateY(-10deg); }
+  25%  { transform: translateY(-10px) rotateX(12deg) rotateY(8deg); }
+  50%  { transform: translateY(0px) rotateX(10deg) rotateY(-6deg); }
+  75%  { transform: translateY(-8px) rotateX(11deg) rotateY(12deg); }
+  100% { transform: translateY(0px) rotateX(10deg) rotateY(-10deg); }
+}
+
+.card-preview.is-pair .card3d{
+  animation: cardFloatPair 5.2s ease-in-out infinite;
+}
+
+@keyframes cardFloatPair{
+  0%   { transform: translateY(0px); }
+  50%  { transform: translateY(-10px); }
+  100% { transform: translateY(0px); }
+}
+
+/* Placeholder “?” für Slot1/Slot2 */
+.card3d.is-placeholder .card3d-face.front{
+  background-image: none !important;
+  background: rgba(255,255,255,0.08);
+  backdrop-filter: blur(6px);
+}
+
+.card3d.is-placeholder .card3d-face.front::after{
+  content: "?";
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: clamp(52px, 7vw, 78px);
+  font-weight: 800;
+  color: rgba(255,255,255,0.75);
+  text-shadow: 0 12px 30px rgba(0,0,0,0.35);
+  
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transform: translateZ(0.2px);
+}
+
+@media (prefers-reduced-motion: reduce){
+  .card3d{ animation: none !important; }
+}
+
+/* Compact form spacing on mobile */
+.glass-card form{
+  display: grid;
+  gap: 10px;
+}
+
+.glass-card select,
+.glass-card input[type="text"],
+.glass-card input[type="url"]{
+  padding: 10px 12px;
+}
+
+.glass-card label{
+  margin-top: 12px;
+  margin-bottom: 0px;   /* <-- DAS ist der entscheidende Teil */
+  line-height: 1.2;
+}
+
+.recv-icon{
+  display: inline-block;
+  width: 18px;
+  text-align: center;
+  margin-right: 8px;
+  font-weight: 900;
+  opacity: 0.95;
+}
+
+.recv-icon.is-ok{
+  color: rgba(140,255,170,0.95);
+}
+
+.recv-icon.is-pending{
+  color: rgba(210,210,210,0.75);
+}
+
+/* =========================================================
+   Disabled fields: stronger visual feedback
+   ========================================================= */
+
+/* Allgemein: disabled Felder klarer unterscheiden */
+select:disabled,
+input:disabled{
+  background: rgba(0,0,0,0.28);          /* dunkler */
+  border-color: rgba(255,255,255,0.14);  /* weniger Kontrast */
+  color: rgba(255,255,255,0.55);         /* text etwas gedimmt */
+  opacity: 0.78;                         /* insgesamt „ausgegraut“ */
+  cursor: not-allowed;
+}
+
+/* Placeholder in disabled Inputs ebenfalls gedimmt */
+input:disabled::placeholder{
+  color: rgba(255,255,255,0.38);
+}
+
+/* Spezifisch Commander2 noch stärker, weil es dein wichtigster UX-Fall ist */
+#commander2:disabled{
+  background: rgba(0,0,0,0.38);          /* noch dunkler */
+  opacity: 0.72;
+}

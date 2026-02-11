@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deck Registrierung</title>
+    <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+    <!-- 3D Card Preview (überlappt die glass-card leicht am oberen Rand) -->
+        <div id="cardPreview"
+                class="card-preview is-single"
+                aria-hidden="true"
+                data-reveal="{% if start_file_exists and existing_entry and existing_entry.received_confirmed %}1{% else %}0{% endif %}"
+                data-commander="{% if existing_entry and existing_entry.commander %}{{ existing_entry.commander }}{% endif %}"
+                data-commander2="{% if existing_entry and existing_entry.commander2 %}{{ existing_entry.commander2 }}{% endif %}">
+            <div class="card3d slot1" data-slot="1">
+                <div class="card3d-face front"></div>
+                <div class="card3d-face back"></div>
+            </div>
+
+            <div class="card3d slot2 is-placeholder is-hidden" data-slot="2">
+                <div class="card3d-face front"></div>
+                <div class="card3d-face back"></div>
+            </div>
+        </div>
+        
+    <div class="glass-card has-card-preview" data-deck-id="{{ deck_id }}">
+
+        <h1>
+            {% if start_file_exists %}
+                Deck Verteilung
+            {% else %}
+                Deck Registrierung
+            {% endif %}
+        </h1>
+
+        <!-- Bedingte Anzeige basierend auf deck_id und start_file_exists -->
+        {% if deck_id == 0 %}
+            {% if start_file_exists %}
+            <p class="status ok">
+                Bitte scant jetzt noch mal die Decks, und verteilt Sie wie angegeben.
+            </p>
+            {% else %}
+            <p class="status danger">
+                Bitte warte, bis alle Decks registriert wurden.
+            </p>
+            {% endif %}
+        {% elif existing_entry %}
+        {% if start_file_exists %}
+        <p class="status">
+            Bitte übergebe dieses Deck an
+            <span class="status ok" style="display:inline-block; padding:4px 8px; margin-left:6px;">
+                {{ deckOwner }}
+            </span>
+        </p>
+
+        {% if existing_entry.received_confirmed %}
+            <div class="status ok" style="margin-top: 12px;">
+                Erhalt des Decks wurde bestätigt.
+            </div>
+        {% else %}
+            <form action="/confirm_received" method="post" style="margin-top: 14px;">
+                <input type="hidden" name="deck_id" value="{{ deck_id }}">
+                <div class="btn-row">
+                    <button type="submit">
+                        Erhalt bestätigen
+                    </button>
+                </div>
+            </form>
+        {% endif %}
+
+        {% if existing_entry.pairing_phase == "voting" %}
+            <div class="status danger" style="margin-top: 12px;">
+                Spielphase beendet. Bitte jetzt das Voting starten.
+            </div>
+        {% elif existing_entry.pairing_round %}
+            <div class="status" style="margin-top: 12px;">
+                Runde {{ existing_entry.pairing_round }} – Tisch {{ existing_entry.pairing_table }}
+                <div style="margin-top: 8px;">
+                    <strong>Mitspieler:</strong>
+                    <div style="margin-top: 6px;">
+                        {% for p in existing_entry.pairing_players %}
+                            <div>{{ p }}</div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        {% elif start_file_exists and existing_entry.received_confirmed %}
+            <div class="status" style="margin-top: 12px;">
+                Bitte warte auf die Pairings.
+            </div>
+        {% endif %}
+
+        {% else %}
+        <p class="status danger">
+            Dieses Deck wurde bereits registriert. Bitte warte bis der Raffle startet.
+        </p>
+        {% endif %}
+        {% else %}
+            <!-- Fehleranzeige -->
+            {% if error %}
+            <div class="status danger">
+                {{ error }}
+            </div>
+            {% endif %}
+
+            <!-- Formular -->
+            <form action="/submit" method="post">
+                <label for="deckersteller">Name des Deckerstellers:</label>
+                <select id="deckersteller" name="deckersteller" required>
+                    <option value="" disabled selected>Wählen Sie einen Namen</option>
+                    {% for name in participants %}
+                    <option value="{{ name }}" {% if values and values.get('deckersteller') == name %}selected{% endif %}>{{ name }}</option>
+                    {% endfor %}
+                </select>
+                
+
+                <label for="commander">Name des Commanders:</label>
+                <div class="suggest-wrap">
+                    <input type="text" id="commander" name="commander" class="commander-input" autocomplete="off" required
+                        value="{{ values.commander if values }}" placeholder="z.B. Akroma (sucht auf Scryfall)">
+                    <input type="hidden" id="commander_id" name="commander_id" value="{{ values.commander_id if values }}">
+                    <div id="commanderSpinner" class="input-spinner"></div>
+                    <div id="commanderSuggestBox" class="suggest-box"></div>
+                </div>
+                {% if field_errors and field_errors.get('commander') %}
+                <div class="field-error">{{ field_errors.get('commander') }}</div>
+                {% endif %}
+                
+
+                <div id="commander2Wrap">
+                    <div class="suggest-wrap">
+                        <input type="text" id="commander2" name="commander2" class="commander-input" autocomplete="off"
+                            value="{{ values.commander2 if values }}"
+                            placeholder="Partner (freigeschaltet, wenn partnerfähiger Commander ausgewählt ist)"
+                            disabled>
+                        <input type="hidden" id="commander2_id" name="commander2_id" value="{{ values.commander2_id if values }}">
+                        <div id="commander2Spinner" class="input-spinner"></div>
+                        <div id="commander2SuggestBox" class="suggest-box"></div>
+                    </div>
+                    {% if field_errors and field_errors.get('commander2') %}
+                    <div class="field-error">{{ field_errors.get('commander2') }}</div>
+                    {% endif %}
+                    
+                </div>
+
+
+                <label for="deckUrl">DeckURL z.B. Moxfield (optional):</label>
+                <input type="url" id="deckUrl" name="deckUrl" value="{{ values.deckUrl if values }}">
+                
+
+                <!-- Hidden Input für DeckID -->
+                <input type="hidden" name="deck_id" value="{{ deck_id }}">
+
+                <div class="btn-row">
+                    <button type="reset">Reset</button>
+                    <button type="submit" id="submitBtn">Send</button>
+                </div>
+            </form>
+        {% endif %}
+
+        <script src="/static/index.js" defer></script>
+
+    </div>
+</body>
+</html>
