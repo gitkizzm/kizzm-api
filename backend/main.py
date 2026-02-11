@@ -321,7 +321,67 @@ def _gen_partitions(indices: list[int], sizes: list[int]) -> list[list[list[int]
     rec(indices, 0, [])
     return res
 
-def _build_rounds(players: list[str], num_pods: int, max_rounds: int = MAX_ROUNDS) -> list[list[list[str]]]:
+def _first_round_with_hosts(players: list[str], num_pods: int, hosts: list[str]) -> list[list[str]]:
+    """Erzeuge eine gültige Runde-1-Pod-Aufteilung, bei der Hosts auf verschiedene Tische verteilt werden.
+
+    Regel:
+      - hosts (max. num_pods) werden als erstes je einem Pod zugewiesen (Pod 1..k).
+      - Restliche Spieler werden (randomisiert) aufgefüllt, Podgrößen wie _pod_sizes().
+
+    Rückgabe: Liste von Pods, jeder Pod ist Liste von Spielernamen.
+    """
+    n = len(players)
+    sizes = _pod_sizes(n, num_pods)
+    k = len(sizes)
+
+    # Normalisieren: uniq + in players
+    host_set: list[str] = []
+    seen: set[str] = set()
+    for h in hosts or []:
+        h = (h or "").strip()
+        if not h or h in seen:
+            continue
+        if h not in players:
+            continue
+        seen.add(h)
+        host_set.append(h)
+
+    host_set = host_set[:k]
+
+    remaining = [p for p in players if p not in set(host_set)]
+    shuffle(remaining)
+
+    pods: list[list[str]] = [[] for _ in range(k)]
+
+    # Hosts zuerst, deterministisch nach sortierter Host-Liste (nur für Stabilität)
+    host_sorted = sorted(host_set, key=lambda x: x.lower())
+    for i, h in enumerate(host_sorted):
+        if i >= k:
+            break
+        pods[i].append(h)
+
+    # Rest auffüllen gemäß sizes (in Pod-Reihenfolge)
+    idx = 0
+    for i in range(k):
+        want = sizes[i] - len(pods[i])
+        if want <= 0:
+            continue
+        pods[i].extend(remaining[idx:idx + want])
+        idx += want
+
+    # Sicherheitscheck: alle Spieler genau 1x
+    flat = [p for pod in pods for p in pod]
+    if sorted(flat) != sorted(players):
+        shuffle(remaining)
+        pods = []
+        idx = 0
+        for s in sizes:
+            pods.append(remaining[idx:idx + s])
+            idx += s
+
+    return pods
+
+def _build_rounds(players: list[str], num_pods: int, max_rounds: int = MAX_ROUNDS, fixed_first_round: list[list[str]] | None = None) -> list[list[list[str]]]:
     """
     1) BFS: finde minimale Rundenzahl, bis alle Paare mindestens einmal zusammen gespielt haben.
     2) Danach greedily weitere Runden bis max_rounds zum Ausgleich (min max_count, min sum_sq).
@@ -332,15 +392,37 @@ def _build_rounds(players: list[str], num_pods: int, max_rounds: int = MAX_ROUND
 
     # BFS nach minimaler Tiefe, die missing_pairs == 0 erreicht
     start_counts = [[0] * n for _ in range(n)]
+    rounds_idx: list[list[list[int]]] = []
+
+    # Optional: Runde 1 fixieren (Hosts)
+    if fixed_first_round:
+        name_to_idx = {name: i for i, name in enumerate(players)}
+        fixed_idx: list[list[int]] = []
+        used: set[int] = set()
+        for pod in fixed_first_round:
+            pod_idx: list[int] = []
+            for name in pod:
+                if name not in name_to_idx:
+                    continue
+                pod_idx.append(name_to_idx[name])
+            fixed_idx.append(sorted(pod_idx))
+            used.update(pod_idx)
+
+        ok_sizes = sorted([len(p) for p in fixed_idx], reverse=True) == sorted(sizes, reverse=True)
+        ok_used = len(used) == n
+        if ok_sizes and ok_used:
+            rounds_idx.append(fixed_idx)
+            start_counts = _apply_partition(start_counts, fixed_idx)
+
     start_key = _counts_key(start_counts)
 
     from collections import deque
 
     best_depth_solution = None  # (depth, path_partitions_as_indices, counts_key)
-    visited = set([(start_key, 0)])
+    visited = set([(start_key, len(rounds_idx))])
 
     q = deque()
-    q.append((start_key, 0, []))  # counts_key, depth, path
+    q.append((start_key, len(rounds_idx), rounds_idx[:]))  # counts_key, depth, path
 
     target_depth = None
 
@@ -381,9 +463,8 @@ def _build_rounds(players: list[str], num_pods: int, max_rounds: int = MAX_ROUND
 
     if best_depth_solution is None:
         # Fallback: greedy build max_rounds
-        rounds_idx = []
         counts = start_counts
-        for _ in range(max_rounds):
+        while len(rounds_idx) < max_rounds:
             best = None
             for pods in partitions:
                 newc = _apply_partition(counts, pods)
@@ -474,6 +555,7 @@ def _global_signature(start_file_exists: bool, raffle_list: list[dict]) -> str:
         "confirmed_count": confirmed,
         "pairings_phase": pair.get("phase"),
         "active_round": pair.get("active_round"),
+        "pairings_hosts": pair.get("hosts"),
     }
     return hashlib.sha1(json.dumps(obj, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
 
@@ -1381,6 +1463,10 @@ async def customer_control_panel(request: Request):
     active_round = int(pair.get("active_round") or 0) if pair else 0
     pairings_started = bool(pair) and active_round > 0
 
+    # für Host-Auswahl (nur sinnvoll nach Start + alle bestätigt)
+    players = _deckowners(raffle_list) if start_file_exists else []
+    selected_hosts = (pair.get("hosts") or []) if isinstance(pair, dict) else []
+
     if FILE_PATH.exists():
         try:
             with FILE_PATH.open("r", encoding="utf-8") as f:
@@ -1440,6 +1526,8 @@ async def customer_control_panel(request: Request):
             "pairings_started": pairings_started,
             "pairings_phase": pairings_phase,
             "active_round": active_round,
+            "players": players,
+            "selected_hosts": selected_hosts,
         }
     )
 
@@ -1914,7 +2002,7 @@ async def ws_endpoint(websocket: WebSocket):
         ws_manager.disconnect(websocket, group)
 
 @app.post("/startPairings")
-async def start_pairings(num_pods: int = Form(...)):
+async def start_pairings(num_pods: int = Form(...), hosts: list[str] = Form(default=[])):
     async with RAFFLE_LOCK:
         raffle_list = _load_raffle_list()
 
@@ -1928,7 +2016,24 @@ async def start_pairings(num_pods: int = Form(...)):
         if len(players) < 3:
             raise HTTPException(status_code=400, detail="Zu wenige Spieler.")
 
-        rounds = _build_rounds(players, int(num_pods), MAX_ROUNDS)
+        # Hosts validieren: nur bekannte Spieler, keine Duplikate
+        host_clean: list[str] = []
+        seen: set[str] = set()
+        for h in hosts or []:
+            h = (h or "").strip()
+            if not h or h in seen:
+                continue
+            if h not in players:
+                raise HTTPException(status_code=400, detail=f"Unbekannter Host: {h}")
+            seen.add(h)
+            host_clean.append(h)
+
+        if len(host_clean) > int(num_pods):
+            raise HTTPException(status_code=400, detail="Es können höchstens so viele Hosts gewählt werden wie Tische vorhanden sind.")
+
+        fixed_first = _first_round_with_hosts(players, int(num_pods), host_clean) if host_clean else None
+
+        rounds = _build_rounds(players, int(num_pods), MAX_ROUNDS, fixed_first_round=fixed_first)
 
         state = {
             "pods": int(num_pods),
@@ -1936,6 +2041,7 @@ async def start_pairings(num_pods: int = Form(...)):
             "rounds": rounds,
             "active_round": 1,
             "phase": "playing",
+            "hosts": sorted(host_clean, key=lambda x: x.lower()),
         }
         _atomic_write_pairings(state)
 
