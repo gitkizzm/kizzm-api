@@ -415,14 +415,14 @@ button:not(:disabled):hover{
 .glass-card.has-card-preview{
   position: relative;
   /* Statt padding-top: wir schieben die card nach unten, aber lassen overlap zu */
-  margin-top: 140px;
+  margin-top: 154px;
 }
 
 /* Fixiert unter Browser-UI / Safe Area */
 .card-preview{
   position: fixed;
   left: 50%;
-  top: max(10px, calc(env(safe-area-inset-top) + 10px));
+  top: max(24px, calc(env(safe-area-inset-top) + 24px));
   transform: translateX(-50%);
   z-index: 50;
 
