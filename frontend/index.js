@@ -350,7 +350,7 @@ async function ensureCardPreviewLoaded(){
     return result;
   }
 
-  function normalizePlacementsByRules(placements){
+  function normalizePlacementsByRules(placements, triggerPlayer = null){
     const buckets = {
       "1": [...(placements["1"] || [])],
       "2": [...(placements["2"] || [])],
@@ -358,47 +358,69 @@ async function ensureCardPreviewLoaded(){
       "4": [...(placements["4"] || [])],
     };
 
+    function cloneBuckets(src){
+      return {
+        "1": [...(src["1"] || [])],
+        "2": [...(src["2"] || [])],
+        "3": [...(src["3"] || [])],
+        "4": [...(src["4"] || [])],
+      };
+    }
+
+    function pushDownWithCascade(state, place, incoming){
+      if(place > 4) return false;
+      const key = String(place);
+      const prev = state[key] || [];
+      state[key] = [...incoming];
+      if(prev.length === 0) return true;
+      return pushDownWithCascade(state, place + 1, prev);
+    }
+
     let changed = true;
     while(changed){
       changed = false;
 
-      // 1) Jeder Gleichstand rutscht so weit nach unten, wie seine Größe verlangt.
-      //    Beispiel: 2 Spieler auf Platz 3 -> Platz 4, 4 Spieler auf Platz 1 -> Platz 4.
-      for(let p = 3; p >= 1; p--){
-        const place = String(p);
-        const count = (buckets[place] || []).length;
-        if(count <= 1) continue;
-
-        const target = String(Math.min(4, p + count - 1));
-        if(target !== place){
-          buckets[target].push(...buckets[place]);
-          buckets[place] = [];
-          changed = true;
-        }
-      }
-
-      // 2) Wenn ein Gleichstand Platz p den Platz p-1 blockiert,
-      //    wird der blockierte Platz nach unten geschoben (nicht nach oben).
+      // Ein Gleichstand auf p blockiert p-1. Falls p-1 belegt ist,
+      // wird die Gleichstandsgruppe nach unten verschoben.
       for(let p = 4; p >= 2; p--){
         const place = String(p);
         const blocked = String(p - 1);
+        const tieGroup = buckets[place] || [];
+        const blockedGroup = buckets[blocked] || [];
 
-        if((buckets[place] || []).length > 1 && (buckets[blocked] || []).length > 0){
-          buckets[place].push(...buckets[blocked]);
-          buckets[blocked] = [];
-          changed = true;
+        if(tieGroup.length <= 1 || blockedGroup.length === 0) continue;
+
+        const snapshot = cloneBuckets(buckets);
+        buckets[place] = [];
+        const ok = pushDownWithCascade(buckets, p + 1, tieGroup);
+
+        if(!ok){
+          // Sonderfall laut Anforderung:
+          // Wenn die Umverteilung durch den neu gesetzten Spieler ausgelöst wurde
+          // und nach unten kein Platz mehr frei ist, rutscht dieser auf Platz 1.
+          const reset = cloneBuckets(snapshot);
+          if(triggerPlayer){
+            for(const k of ["1", "2", "3", "4"]){
+              reset[k] = (reset[k] || []).filter((name) => name !== triggerPlayer);
+            }
+            reset["1"] = [...(reset["1"] || []), triggerPlayer];
+            return normalizePlacementsByRules(reset, null);
+          }
+          return reset;
         }
+
+        changed = true;
       }
     }
 
     return buckets;
   }
 
-  function applyNormalizedPlacementsToState(){
+  function applyNormalizedPlacementsToState(triggerPlayer = null){
     if(!reportState) return;
     const placements = reportCollectPlacements();
 
-    const normalized = normalizePlacementsByRules(placements);
+    const normalized = normalizePlacementsByRules(placements, triggerPlayer);
     reportState.placements = [];
     for(const place of ["1","2","3","4"]){
       for(const player of normalized[place] || []){
@@ -446,7 +468,7 @@ async function ensureCardPreviewLoaded(){
         reportState.placements.push({ player, place });
       }
       reportRender();
-      applyNormalizedPlacementsToState();
+      applyNormalizedPlacementsToState(player);
     }
 
     const chips = Array.from(document.querySelectorAll('.report-player-chip[draggable="true"]'));
