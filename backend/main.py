@@ -25,6 +25,11 @@ from backend.services.raffle_service import (
     shuffle_decks as raffle_shuffle_decks,
     start_raffle as start_raffle_service,
 )
+from backend.services.ws_state_service import (
+    WSManager,
+    deck_signature,
+    global_signature,
+)
 from backend.services.scryfall_service import (
     get_card_by_id,
     is_partner_exact_name,
@@ -49,7 +54,6 @@ from backend.config import (
     SUGGEST_MIN_CHARS,
 )
 import json
-import hashlib
 import asyncio
 from pathlib import Path
 import pandas as pd
@@ -110,57 +114,6 @@ app, templates = create_app()
 # WebSocket live updates (no polling)
 # =========================================================
 
-class WSManager:
-    """
-    Groups:
-      - "ccp"  : Customer Control Panel (reload on any relevant change)
-      - "home" : "/" (reload on any relevant change)
-      - "deck:<id>" : "/?deck_id=<id>" (reload only if that deck's state changes)
-    """
-    def __init__(self):
-        self.groups: dict[str, set[WebSocket]] = {
-            "ccp": set(),
-            "home": set(),
-            # "deck:<id>": set()
-        }
-
-    def connect_existing(self, ws: WebSocket, group: str):
-        if group not in self.groups:
-            self.groups[group] = set()
-        self.groups[group].add(ws)
-
-
-    def disconnect(self, ws: WebSocket, group: str):
-        if group in self.groups:
-            self.groups[group].discard(ws)
-            # optional cleanup empty deck groups
-            if group.startswith("deck:") and len(self.groups[group]) == 0:
-                self.groups.pop(group, None)
-
-    def active_deck_ids(self) -> set[int]:
-        ids = set()
-        for k in self.groups.keys():
-            if k.startswith("deck:"):
-                try:
-                    ids.add(int(k.split(":", 1)[1]))
-                except ValueError:
-                    pass
-        return ids
-
-    async def broadcast_group(self, group: str, payload: dict):
-        conns = list(self.groups.get(group, set()))
-        if not conns:
-            return
-        dead = []
-        for ws in conns:
-            try:
-                await ws.send_json(payload)
-            except Exception:
-                dead.append(ws)
-        # remove dead sockets
-        for ws in dead:
-            self.groups.get(group, set()).discard(ws)
-
 ws_manager = WSManager()
 
 _last_global_sig: str | None = None
@@ -212,54 +165,10 @@ def _apply_round_to_raffle(raffle_list: list[dict], state: dict, round_no: int):
     apply_round_to_raffle(raffle_list, state, round_no)
 
 def _global_signature(start_file_exists: bool, raffle_list: list[dict]) -> str:
-    deck_ids = {e.get("deck_id") for e in raffle_list if "deck_id" in e}
-    confirmed = 0
-    total = 0
-    for e in raffle_list:
-        if "deck_id" in e:
-            total += 1
-            if e.get("received_confirmed") is True:
-                confirmed += 1
-
-    pair = _load_pairings() or {}
-    obj = {
-        "start_file_exists": start_file_exists,
-        "deck_count": len(deck_ids),
-        "total_decks": total,
-        "confirmed_count": confirmed,
-        "pairings_phase": pair.get("phase"),
-        "active_round": pair.get("active_round"),
-        "pairings_hosts": pair.get("hosts"),
-    }
-    return hashlib.sha1(json.dumps(obj, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+    return global_signature(start_file_exists, raffle_list, pairings_loader=_load_pairings)
 
 def _deck_signature(deck_id: int, start_file_exists: bool, raffle_list: list[dict]) -> str:
-    entry = None
-    for e in raffle_list:
-        if e.get("deck_id") == deck_id:
-            entry = e
-            break
-
-    registered = entry is not None
-    deck_owner = entry.get("deckOwner") if entry else None
-
-    # This captures exactly what can change the rendered page for that deck_id:
-    # - raffle started or not
-    # - whether this deck_id is registered
-    # - who the deckOwner is (after start)
-    received_confirmed = entry.get("received_confirmed") if entry else None
-
-    obj = {
-        "deck_id": deck_id,
-        "start_file_exists": start_file_exists,
-        "registered": registered,
-        "deckOwner": deck_owner,
-        "received_confirmed": received_confirmed,
-        "pairing_round": entry.get("pairing_round") if entry else None,
-        "pairing_table": entry.get("pairing_table") if entry else None,
-        "pairing_phase": entry.get("pairing_phase") if entry else None,
-    }
-    return hashlib.sha1(json.dumps(obj, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+    return deck_signature(deck_id, start_file_exists, raffle_list)
 
 async def notify_state_change():
     """
