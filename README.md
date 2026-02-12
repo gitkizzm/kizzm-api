@@ -18,3 +18,11 @@ Dieses Projekt registriert Decks und speichert die Daten in einer JSON-Datei.
    ```bash
    git clone <repository-url>
    cd deck-registration
+   ```
+
+## Development (Codespace)
+Starten Sie das Backend im Codespace mit:
+
+```bash
+uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
+```
