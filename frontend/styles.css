@@ -746,27 +746,35 @@ body.ccp-page .ccp-card{
 
 .report-player-chip{
   display:flex;
-  align-items:center;
-  gap:8px;
+  align-items:stretch;
+  gap:6px;
   width:100%;
-  margin:4px 0;
-  padding:6px 8px;
-  border-radius:9px;
+  margin:1px 0;
+  padding:1px 4px 1px 1px;
+  border-radius:8px;
   border:1px solid rgba(255,255,255,0.2);
   background: rgba(255,255,255,0.08);
   color: var(--text);
   cursor:grab;
-  min-height:42px;
+  min-height:30px;
+  touch-action: none;
+}
+
+.report-player-chip.is-touch-picked{
+  outline: 1px solid rgba(140,255,170,0.95);
+  background: rgba(140,255,170,0.18);
 }
 
 .report-player-avatar{
   flex: 0 0 auto;
-  height: 28px;
+  height: 100%;
+  min-height: 28px;
   width: auto;
   display:flex;
   align-items:center;
   justify-content:center;
   overflow:hidden;
+  margin-left: 0;
 }
 
 .report-player-avatar-img{
@@ -794,6 +802,8 @@ body.ccp-page .ccp-card{
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  display:flex;
+  align-items:center;
 }
 
 .report-place-slot + .report-place-slot{ margin-top: 8px; }
@@ -803,17 +813,16 @@ body.ccp-page .ccp-card{
   min-height:44px;
   border:1px dashed rgba(255,255,255,0.32);
   border-radius:10px;
-  padding:4px;
+  padding:16px 1px 1px;
 }
 
 .report-dropzone::before{
   content: attr(data-place-label);
   position:absolute;
-  inset:0;
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  color: rgba(230,230,230,0.35);
+  top:1px;
+  left:6px;
+  font-size:12px;
+  color: rgba(230,230,230,0.45);
   font-weight:700;
   pointer-events:none;
 }

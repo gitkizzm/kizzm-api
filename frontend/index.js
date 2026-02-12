@@ -366,6 +366,30 @@ async function ensureCardPreviewLoaded(){
   }
 
   function reportBindDraggable(){
+    let touchDraggedPlayer = null;
+
+    const zones = [reportPlayersPoolEl, ...Array.from(document.querySelectorAll('.report-dropzone'))].filter(Boolean);
+
+    function clearZoneHighlights(){
+      zones.forEach((z) => z.classList.remove('is-over'));
+    }
+
+    function zoneAtPoint(clientX, clientY){
+      const el = document.elementFromPoint(clientX, clientY);
+      if(!el) return null;
+      return el.closest('#reportPlayersPool, .report-dropzone');
+    }
+
+    function placePlayerInZone(player, zone){
+      if(!player || !zone || !reportState) return;
+      reportState.placements = reportState.placements.filter((pl) => pl.player !== player);
+      const place = zone.dataset.place;
+      if(place){
+        reportState.placements.push({ player, place });
+      }
+      reportRender();
+    }
+
     const chips = Array.from(document.querySelectorAll('.report-player-chip[draggable="true"]'));
     chips.forEach((chip) => {
       chip.addEventListener('dragstart', (ev) => {
@@ -373,10 +397,40 @@ async function ensureCardPreviewLoaded(){
         if(!player) return;
         ev.dataTransfer?.setData('text/plain', player);
       });
+
+      chip.addEventListener('touchstart', (ev) => {
+        const player = chip.dataset.player;
+        if(!player) return;
+        touchDraggedPlayer = player;
+        chip.classList.add('is-touch-picked');
+      }, { passive: true });
+
+      chip.addEventListener('touchmove', (ev) => {
+        if(!touchDraggedPlayer) return;
+        const t = ev.touches?.[0];
+        if(!t) return;
+        const targetZone = zoneAtPoint(t.clientX, t.clientY);
+        clearZoneHighlights();
+        targetZone?.classList.add('is-over');
+      }, { passive: true });
+
+      chip.addEventListener('touchend', (ev) => {
+        chip.classList.remove('is-touch-picked');
+        if(!touchDraggedPlayer) return;
+        const t = ev.changedTouches?.[0];
+        const targetZone = t ? zoneAtPoint(t.clientX, t.clientY) : null;
+        clearZoneHighlights();
+        if(targetZone){
+          placePlayerInZone(touchDraggedPlayer, targetZone);
+        }
+        touchDraggedPlayer = null;
+      }, { passive: true });
     });
 
-    const zones = [reportPlayersPoolEl, ...Array.from(document.querySelectorAll('.report-dropzone'))].filter(Boolean);
     zones.forEach((zone) => {
+      if(zone.dataset.dragBound === '1') return;
+      zone.dataset.dragBound = '1';
+
       zone.addEventListener('dragover', (ev) => {
         ev.preventDefault();
         zone.classList.add('is-over');
@@ -386,13 +440,7 @@ async function ensureCardPreviewLoaded(){
         ev.preventDefault();
         zone.classList.remove('is-over');
         const player = ev.dataTransfer?.getData('text/plain');
-        if(!player || !reportState) return;
-        reportState.placements = reportState.placements.filter((pl) => pl.player !== player);
-        const place = zone.dataset.place;
-        if(place){
-          reportState.placements.push({ player, place });
-        }
-        reportRender();
+        placePlayerInZone(player, zone);
       });
     });
   }
