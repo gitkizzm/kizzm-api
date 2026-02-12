@@ -27,13 +27,7 @@
         
     <div class="glass-card has-card-preview" data-deck-id="{{ deck_id }}">
 
-        <h1>
-            {% if start_file_exists %}
-                Deck Verteilung
-            {% else %}
-                Deck Registrierung
-            {% endif %}
-        </h1>
+        <h1>{{ glasscard_title or "Deckregistrierung" }}</h1>
 
         <!-- Bedingte Anzeige basierend auf deck_id und start_file_exists -->
         {% if deck_id == 0 %}
