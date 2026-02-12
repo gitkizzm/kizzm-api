@@ -118,25 +118,30 @@ def _to_dict(model: BaseModel) -> dict[str, Any]:
     return model.model_dump()
 
 
-def load_event_settings(path: Path = EVENT_CONFIG_FILE_PATH) -> tuple[EventSettings, dict[str, Any]]:
+def load_event_settings(
+    path: Path = EVENT_CONFIG_FILE_PATH,
+    participants_path: Path = PARTICIPANTS_FILE_PATH,
+) -> tuple[EventSettings, dict[str, Any]]:
     """
     Returns parsed settings + metadata.
     Metadata contains source and optional validation error string.
     """
     if not path.exists():
-        return get_default_settings(), {"source": "defaults", "path": str(path), "error": None}
+        return get_default_settings(participants_path), {"source": "defaults", "path": str(path), "error": None}
 
     try:
         with path.open("r", encoding="utf-8") as f:
             payload = json.load(f)
     except Exception as exc:
-        return get_default_settings(), {"source": "defaults", "path": str(path), "error": f"read_error: {exc}"}
+        return get_default_settings(participants_path), {"source": "defaults", "path": str(path), "error": f"read_error: {exc}"}
 
     try:
         parsed = EventSettings.model_validate(payload)
+        if not parsed.participants:
+            parsed.participants = get_default_settings(participants_path).participants
         return parsed, {"source": "file", "path": str(path), "error": None}
     except ValidationError as exc:
-        return get_default_settings(), {"source": "defaults", "path": str(path), "error": f"validation_error: {exc}"}
+        return get_default_settings(participants_path), {"source": "defaults", "path": str(path), "error": f"validation_error: {exc}"}
 
 
 def detect_event_state(
