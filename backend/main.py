@@ -1,41 +1,68 @@
 import uvicorn
-from fastapi import FastAPI, Form, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import Form, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
-from fastapi.templating import Jinja2Templates
-from fastapi.staticfiles import StaticFiles
 from backend.schemas import DeckSchema
+from backend.app_factory import create_app
+from backend.repositories.json_store import atomic_write_json
+from backend.repositories.pairings_repository import load_pairings, write_pairings
+from backend.repositories.raffle_repository import load_raffle_list
+from backend.services.card_rules import (
+    get_image_url,
+    has_choose_a_background,
+    has_friends_forever,
+    is_background,
+    partner_with_target_name,
+)
+from backend.services.pairings_service import (
+    apply_round_to_raffle,
+    build_rounds,
+    first_round_with_hosts,
+    pod_sizes,
+)
+from backend.services.raffle_service import (
+    RaffleStartError,
+    assign_deck_owners,
+    shuffle_decks as raffle_shuffle_decks,
+    start_raffle as start_raffle_service,
+)
+from backend.services.ws_state_service import (
+    WSManager,
+    deck_signature,
+    global_signature,
+)
+from backend.services.scryfall_service import (
+    get_card_by_id,
+    is_partner_exact_name,
+    named_exact,
+    random_commander,
+)
+from backend.config import (
+    CACHE_MAX_ENTRIES,
+    CACHE_TTL_SECONDS,
+    COMMANDER_BG_ZOOM,
+    DEFAULT_BG_QUERY,
+    DEFAULT_BG_ZOOM,
+    MAX_ROUNDS,
+    PAIRINGS_FILE_PATH,
+    PARTICIPANTS_FILE_PATH,
+    RAFFLE_FILE_PATH,
+    SCRYFALL_BASE,
+    SCRYFALL_HEADERS,
+    SCRYFALL_TIMEOUT,
+    START_FILE_PATH,
+    SUGGEST_LIMIT,
+    SUGGEST_MIN_CHARS,
+)
 import json
-import hashlib
 import asyncio
 from pathlib import Path
 import pandas as pd
 from random import shuffle, randint, choice
 import time 
-import re 
 from collections import OrderedDict
 from urllib.parse import quote_plus, unquote_plus
 import httpx
-import os
 #python -m uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
-
-#--- Scryfall commander suggest config ---
-SCRYFALL_BASE = "https://api.scryfall.com"
-SUGGEST_MIN_CHARS = 3          # 2 oder 3 – du wolltest 2–3; Default: 3
-SUGGEST_LIMIT = 15             # Smartphone-freundlich
-SCRYFALL_TIMEOUT = 2.0         # Sekunden
-
-CACHE_TTL_SECONDS = 24 * 3600
-CACHE_MAX_ENTRIES = 1000
-
-# Default Background: Snow Basics aus Secret Lair Drop (dein Query)
-DEFAULT_BG_QUERY = 't:basic t:snow e:SLD'
-DEFAULT_BG_ZOOM = 1.12   # <- “Rand weg gecropped” zusätzlich per Zoom (einstellbar)
-COMMANDER_BG_ZOOM = 1.00 # <- kein zusätzlicher Zoom
-
-SCRYFALL_HEADERS = {
-    "Accept": "application/json",
-    "User-Agent": "CommanderRaffle/1.0 (contact: you@example.com)",
-}
 
 _suggest_cache = OrderedDict()  # key -> (timestamp, result_list)
 
@@ -62,25 +89,12 @@ def _cache_set(key: str, value):
         _suggest_cache.popitem(last=False)
 
 def _get_image_url(card: dict, key: str) -> str | None:
-    # key: "art_crop", "border_crop", "large", ...
-    iu = card.get("image_uris")
-    if isinstance(iu, dict) and iu.get(key):
-        return iu[key]
-
-    faces = card.get("card_faces")
-    if isinstance(faces, list) and len(faces) > 0:
-        fu = faces[0].get("image_uris")
-        if isinstance(fu, dict) and fu.get(key):
-            return fu[key]
-
-    return None
+    return get_image_url(card, key)
 
 
 # JSON-Datei
-FILE_PATH = Path("raffle.json")
-
-PAIRINGS_PATH = Path("pairings.json")
-MAX_ROUNDS = 7
+FILE_PATH = RAFFLE_FILE_PATH
+PAIRINGS_PATH = PAIRINGS_FILE_PATH
 
 # Serialisiert alle Zugriffe auf raffle.json innerhalb dieses Prozesses
 RAFFLE_LOCK = asyncio.Lock()
@@ -91,77 +105,14 @@ def _atomic_write_json(path: Path, data) -> None:
     - erst in temp-Datei schreiben
     - dann os.replace (atomarer rename) auf Ziel
     """
-    tmp_path = path.with_suffix(path.suffix + ".tmp")
-    with tmp_path.open("w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=4)
-    os.replace(tmp_path, path)
+    atomic_write_json(path, data)
 
 # FastAPI-App erstellen
-app = FastAPI()
-app.mount("/static", StaticFiles(directory="frontend"), name="static")
-
-# Optional: lokale Assets (z.B. assets/backgrounds/*.png)
-_assets_dir = Path("assets")
-if _assets_dir.exists() and _assets_dir.is_dir():
-    app.mount("/assets", StaticFiles(directory="assets"), name="assets")
-
-# Templates für HTML-Seiten
-templates = Jinja2Templates(directory="frontend")
+app, templates = create_app()
 
 # =========================================================
 # WebSocket live updates (no polling)
 # =========================================================
-
-class WSManager:
-    """
-    Groups:
-      - "ccp"  : Customer Control Panel (reload on any relevant change)
-      - "home" : "/" (reload on any relevant change)
-      - "deck:<id>" : "/?deck_id=<id>" (reload only if that deck's state changes)
-    """
-    def __init__(self):
-        self.groups: dict[str, set[WebSocket]] = {
-            "ccp": set(),
-            "home": set(),
-            # "deck:<id>": set()
-        }
-
-    def connect_existing(self, ws: WebSocket, group: str):
-        if group not in self.groups:
-            self.groups[group] = set()
-        self.groups[group].add(ws)
-
-
-    def disconnect(self, ws: WebSocket, group: str):
-        if group in self.groups:
-            self.groups[group].discard(ws)
-            # optional cleanup empty deck groups
-            if group.startswith("deck:") and len(self.groups[group]) == 0:
-                self.groups.pop(group, None)
-
-    def active_deck_ids(self) -> set[int]:
-        ids = set()
-        for k in self.groups.keys():
-            if k.startswith("deck:"):
-                try:
-                    ids.add(int(k.split(":", 1)[1]))
-                except ValueError:
-                    pass
-        return ids
-
-    async def broadcast_group(self, group: str, payload: dict):
-        conns = list(self.groups.get(group, set()))
-        if not conns:
-            return
-        dead = []
-        for ws in conns:
-            try:
-                await ws.send_json(payload)
-            except Exception:
-                dead.append(ws)
-        # remove dead sockets
-        for ws in dead:
-            self.groups.get(group, set()).discard(ws)
 
 ws_manager = WSManager()
 
@@ -169,32 +120,14 @@ _last_global_sig: str | None = None
 _last_deck_sig: dict[int, str] = {}
 
 def _load_raffle_list() -> list[dict]:
-    if not FILE_PATH.exists():
-        return []
-    try:
-        with FILE_PATH.open("r", encoding="utf-8") as f:
-            content = json.load(f)
-            if isinstance(content, list):
-                return content
-            if isinstance(content, dict):
-                return [content]
-    except (json.JSONDecodeError, ValueError):
-        pass
-    return []
+    return load_raffle_list(FILE_PATH)
 
 def _load_pairings() -> dict | None:
-    if not PAIRINGS_PATH.exists():
-        return None
-    try:
-        with PAIRINGS_PATH.open("r", encoding="utf-8") as f:
-            data = json.load(f)
-            return data if isinstance(data, dict) else None
-    except Exception:
-        return None
+    return load_pairings(PAIRINGS_PATH)
 
 
 def _atomic_write_pairings(data: dict) -> None:
-    _atomic_write_json(PAIRINGS_PATH, data)
+    write_pairings(PAIRINGS_PATH, data)
 
 
 def _all_received_confirmed(raffle_list: list[dict]) -> bool:
@@ -215,377 +148,27 @@ def _deckowners(raffle_list: list[dict]) -> list[str]:
     # dedupe (sollte ohnehin eindeutig sein)
     return sorted(list(dict.fromkeys(players)))
 
-from itertools import combinations
 
 def _pod_sizes(n_players: int, num_pods: int) -> list[int]:
-    # Gleichmäßig verteilen: z.B. 7 Spieler, 2 Pods => [4,3]
-    k = max(1, int(num_pods))
-    k = min(k, n_players)
-    base = n_players // k
-    rest = n_players % k
-    sizes = [base + (1 if i < rest else 0) for i in range(k)]
-    sizes.sort(reverse=True)
-    return sizes
+    return pod_sizes(n_players, num_pods)
 
-def _pairs_in_group(group: list[int]) -> list[tuple[int,int]]:
-    g = sorted(group)
-    return [(g[i], g[j]) for i in range(len(g)) for j in range(i+1, len(g))]
-
-def _counts_key(counts: list[list[int]]) -> tuple:
-    # upper triangle flatten
-    n = len(counts)
-    out = []
-    for i in range(n):
-        for j in range(i+1, n):
-            out.append(counts[i][j])
-    return tuple(out)
-
-def _counts_from_key(key: tuple, n: int) -> list[list[int]]:
-    counts = [[0]*n for _ in range(n)]
-    idx = 0
-    for i in range(n):
-        for j in range(i+1, n):
-            v = int(key[idx])
-            idx += 1
-            counts[i][j] = v
-            counts[j][i] = v
-    return counts
-
-def _missing_pairs(counts: list[list[int]]) -> int:
-    n = len(counts)
-    m = 0
-    for i in range(n):
-        for j in range(i+1, n):
-            if counts[i][j] == 0:
-                m += 1
-    return m
-
-def _max_count(counts: list[list[int]]) -> int:
-    n = len(counts)
-    mx = 0
-    for i in range(n):
-        for j in range(i+1, n):
-            if counts[i][j] > mx:
-                mx = counts[i][j]
-    return mx
-
-def _sum_sq(counts: list[list[int]]) -> int:
-    n = len(counts)
-    s = 0
-    for i in range(n):
-        for j in range(i+1, n):
-            v = counts[i][j]
-            s += v*v
-    return s
-
-def _apply_partition(counts: list[list[int]], pods: list[list[int]]) -> list[list[int]]:
-    n = len(counts)
-    newc = [row[:] for row in counts]
-    for pod in pods:
-        for (i, j) in _pairs_in_group(pod):
-            newc[i][j] += 1
-            newc[j][i] += 1
-    return newc
-
-def _gen_partitions(indices: list[int], sizes: list[int]) -> list[list[list[int]]]:
-    """
-    Erzeugt alle Partitionen von indices in Gruppen der gegebenen sizes.
-    Größen sind z.B. [4,4] oder [4,3] etc.
-    Für n<=8 ist das gut machbar.
-    """
-    sizes = list(sizes)
-    sizes.sort(reverse=True)
-
-    res = []
-    indices = sorted(indices)
-
-    def rec(remaining: list[int], si: int, acc: list[list[int]]):
-        if si >= len(sizes):
-            if not remaining:
-                res.append([g[:] for g in acc])
-            return
-        size = sizes[si]
-        if len(remaining) < size:
-            return
-
-        # symmetry breaking: first element in remaining must be in the next group
-        first = remaining[0]
-        for comb in combinations(remaining[1:], size-1):
-            group = [first] + list(comb)
-            group_set = set(group)
-            new_remaining = [x for x in remaining if x not in group_set]
-            acc.append(sorted(group))
-            rec(new_remaining, si+1, acc)
-            acc.pop()
-
-    rec(indices, 0, [])
-    return res
 
 def _first_round_with_hosts(players: list[str], num_pods: int, hosts: list[str]) -> list[list[str]]:
-    """Erzeuge eine gültige Runde-1-Pod-Aufteilung, bei der Hosts auf verschiedene Tische verteilt werden.
+    return first_round_with_hosts(players, num_pods, hosts)
 
-    Regel:
-      - hosts (max. num_pods) werden als erstes je einem Pod zugewiesen (Pod 1..k).
-      - Restliche Spieler werden (randomisiert) aufgefüllt, Podgrößen wie _pod_sizes().
-
-    Rückgabe: Liste von Pods, jeder Pod ist Liste von Spielernamen.
-    """
-    n = len(players)
-    sizes = _pod_sizes(n, num_pods)
-    k = len(sizes)
-
-    # Normalisieren: uniq + in players
-    host_set: list[str] = []
-    seen: set[str] = set()
-    for h in hosts or []:
-        h = (h or "").strip()
-        if not h or h in seen:
-            continue
-        if h not in players:
-            continue
-        seen.add(h)
-        host_set.append(h)
-
-    host_set = host_set[:k]
-
-    remaining = [p for p in players if p not in set(host_set)]
-    shuffle(remaining)
-
-    pods: list[list[str]] = [[] for _ in range(k)]
-
-    # Hosts zuerst, deterministisch nach sortierter Host-Liste (nur für Stabilität)
-    host_sorted = sorted(host_set, key=lambda x: x.lower())
-    for i, h in enumerate(host_sorted):
-        if i >= k:
-            break
-        pods[i].append(h)
-
-    # Rest auffüllen gemäß sizes (in Pod-Reihenfolge)
-    idx = 0
-    for i in range(k):
-        want = sizes[i] - len(pods[i])
-        if want <= 0:
-            continue
-        pods[i].extend(remaining[idx:idx + want])
-        idx += want
-
-    # Sicherheitscheck: alle Spieler genau 1x
-    flat = [p for pod in pods for p in pod]
-    if sorted(flat) != sorted(players):
-        shuffle(remaining)
-        pods = []
-        idx = 0
-        for s in sizes:
-            pods.append(remaining[idx:idx + s])
-            idx += s
-
-    return pods
 
 def _build_rounds(players: list[str], num_pods: int, max_rounds: int = MAX_ROUNDS, fixed_first_round: list[list[str]] | None = None) -> list[list[list[str]]]:
-    """
-    1) BFS: finde minimale Rundenzahl, bis alle Paare mindestens einmal zusammen gespielt haben.
-    2) Danach greedily weitere Runden bis max_rounds zum Ausgleich (min max_count, min sum_sq).
-    """
-    n = len(players)
-    sizes = _pod_sizes(n, num_pods)
-    partitions = _gen_partitions(list(range(n)), sizes)
+    return build_rounds(players, num_pods, max_rounds=max_rounds, fixed_first_round=fixed_first_round)
 
-    # BFS nach minimaler Tiefe, die missing_pairs == 0 erreicht
-    start_counts = [[0] * n for _ in range(n)]
-    rounds_idx: list[list[list[int]]] = []
-
-    # Optional: Runde 1 fixieren (Hosts)
-    if fixed_first_round:
-        name_to_idx = {name: i for i, name in enumerate(players)}
-        fixed_idx: list[list[int]] = []
-        used: set[int] = set()
-        for pod in fixed_first_round:
-            pod_idx: list[int] = []
-            for name in pod:
-                if name not in name_to_idx:
-                    continue
-                pod_idx.append(name_to_idx[name])
-            fixed_idx.append(sorted(pod_idx))
-            used.update(pod_idx)
-
-        ok_sizes = sorted([len(p) for p in fixed_idx], reverse=True) == sorted(sizes, reverse=True)
-        ok_used = len(used) == n
-        if ok_sizes and ok_used:
-            rounds_idx.append(fixed_idx)
-            start_counts = _apply_partition(start_counts, fixed_idx)
-
-    start_key = _counts_key(start_counts)
-
-    from collections import deque
-
-    best_depth_solution = None  # (depth, path_partitions_as_indices, counts_key)
-    visited = set([(start_key, len(rounds_idx))])
-
-    q = deque()
-    q.append((start_key, len(rounds_idx), rounds_idx[:]))  # counts_key, depth, path
-
-    target_depth = None
-
-    while q:
-        key, depth, path = q.popleft()
-        counts = _counts_from_key(key, n)
-
-        miss = _missing_pairs(counts)
-        if miss == 0:
-            target_depth = depth
-            best_depth_solution = (depth, path, key)
-            break
-
-        # nicht über max_rounds hinaus suchen
-        if depth >= max_rounds:
-            continue
-
-        # expand
-        best_candidates = []
-        for pods in partitions:
-            newc = _apply_partition(counts, pods)
-            newkey = _counts_key(newc)
-            # prune by visited at (newkey, depth+1)
-            st = (newkey, depth + 1)
-            if st in visited:
-                continue
-            visited.add(st)
-
-            cost = (_missing_pairs(newc), _max_count(newc), _sum_sq(newc))
-            best_candidates.append((cost, pods, newkey))
-
-        # sort to guide BFS "best-first inside same depth"
-        best_candidates.sort(key=lambda x: x[0])
-
-        # push some best options (n small; keep all is ok, but limit to keep it snappy)
-        for (cost, pods, newkey) in best_candidates[:60]:
-            q.append((newkey, depth + 1, path + [pods]))
-
-    if best_depth_solution is None:
-        # Fallback: greedy build max_rounds
-        counts = start_counts
-        while len(rounds_idx) < max_rounds:
-            best = None
-            for pods in partitions:
-                newc = _apply_partition(counts, pods)
-                cost = (_missing_pairs(newc), _max_count(newc), _sum_sq(newc))
-                if best is None or cost < best[0]:
-                    best = (cost, pods, newc)
-            rounds_idx.append(best[1])
-            counts = best[2]
-    else:
-        depth, rounds_idx, key = best_depth_solution
-        counts = _counts_from_key(key, n)
-
-        # fill remaining rounds greedily for balancing
-        while len(rounds_idx) < max_rounds:
-            best = None
-            for pods in partitions:
-                newc = _apply_partition(counts, pods)
-                # primary now: minimize max_count, then sum_sq, keep missing already 0
-                cost = (_max_count(newc), _sum_sq(newc))
-                if best is None or cost < best[0]:
-                    best = (cost, pods, newc)
-            rounds_idx.append(best[1])
-            counts = best[2]
-
-    # convert indices -> names
-    rounds_named = []
-    for pods in rounds_idx:
-        round_pods = []
-        for pod in pods:
-            round_pods.append([players[i] for i in pod])
-        rounds_named.append(round_pods)
-    return rounds_named
 
 def _apply_round_to_raffle(raffle_list: list[dict], state: dict, round_no: int):
-    """
-    Schreibt in jede raffle.json-Entry:
-      - pairing_round
-      - pairing_table
-      - pairing_players (Liste der Spielernamen am Tisch)
-      - pairing_phase
-    Mapping erfolgt über deckOwner (Spieleridentität).
-    """
-    rounds = state.get("rounds") or []
-    phase = state.get("phase") or "ready"
-    if round_no < 1 or round_no > len(rounds):
-        return
-
-    pods = rounds[round_no - 1]  # 0-indexed
-    # player -> (table_no, players_at_table)
-    assign = {}
-    for t, group in enumerate(pods, start=1):
-        for p in group:
-            assign[p] = (t, group)
-
-    for e in raffle_list:
-        if e.get("deck_id") is None:
-            continue
-        owner = (e.get("deckOwner") or "").strip()
-        if not owner:
-            continue
-        if owner in assign:
-            t, group = assign[owner]
-            e["pairing_round"] = round_no
-            e["pairing_table"] = t
-            e["pairing_players"] = group
-        else:
-            # falls irgendwas nicht zuordenbar ist
-            e["pairing_round"] = round_no
-            e["pairing_table"] = None
-            e["pairing_players"] = []
-        e["pairing_phase"] = phase
+    apply_round_to_raffle(raffle_list, state, round_no)
 
 def _global_signature(start_file_exists: bool, raffle_list: list[dict]) -> str:
-    deck_ids = {e.get("deck_id") for e in raffle_list if "deck_id" in e}
-    confirmed = 0
-    total = 0
-    for e in raffle_list:
-        if "deck_id" in e:
-            total += 1
-            if e.get("received_confirmed") is True:
-                confirmed += 1
-
-    pair = _load_pairings() or {}
-    obj = {
-        "start_file_exists": start_file_exists,
-        "deck_count": len(deck_ids),
-        "total_decks": total,
-        "confirmed_count": confirmed,
-        "pairings_phase": pair.get("phase"),
-        "active_round": pair.get("active_round"),
-        "pairings_hosts": pair.get("hosts"),
-    }
-    return hashlib.sha1(json.dumps(obj, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+    return global_signature(start_file_exists, raffle_list, pairings_loader=_load_pairings)
 
 def _deck_signature(deck_id: int, start_file_exists: bool, raffle_list: list[dict]) -> str:
-    entry = None
-    for e in raffle_list:
-        if e.get("deck_id") == deck_id:
-            entry = e
-            break
-
-    registered = entry is not None
-    deck_owner = entry.get("deckOwner") if entry else None
-
-    # This captures exactly what can change the rendered page for that deck_id:
-    # - raffle started or not
-    # - whether this deck_id is registered
-    # - who the deckOwner is (after start)
-    received_confirmed = entry.get("received_confirmed") if entry else None
-
-    obj = {
-        "deck_id": deck_id,
-        "start_file_exists": start_file_exists,
-        "registered": registered,
-        "deckOwner": deck_owner,
-        "received_confirmed": received_confirmed,
-        "pairing_round": entry.get("pairing_round") if entry else None,
-        "pairing_table": entry.get("pairing_table") if entry else None,
-        "pairing_phase": entry.get("pairing_phase") if entry else None,
-    }
-    return hashlib.sha1(json.dumps(obj, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
+    return deck_signature(deck_id, start_file_exists, raffle_list)
 
 async def notify_state_change():
     """
@@ -594,7 +177,7 @@ async def notify_state_change():
     """
     global _last_global_sig, _last_deck_sig
 
-    start_file_exists = Path("start.txt").exists()
+    start_file_exists = START_FILE_PATH.exists()
     raffle_list = _load_raffle_list()
 
     # global (CCP + home)
@@ -635,13 +218,13 @@ async def get_form(
     """
     # Prüfen, ob teilnehmer.txt existiert und Namen laden
     participants = []
-    participants_file = Path("teilnehmer.txt")
+    participants_file = PARTICIPANTS_FILE_PATH
     if participants_file.exists():
         with participants_file.open("r", encoding="utf-8") as f:
             participants = [line.strip() for line in f.readlines() if line.strip()]  # Entferne leere Zeilen
 
     # Status von start.txt prüfen
-    start_file_exists = Path("start.txt").exists()
+    start_file_exists = START_FILE_PATH.exists()
 
         # Prüfen, ob raffle.json existiert und die deck_id enthalten ist
     existing_entry = None
@@ -712,18 +295,7 @@ async def get_form(
     )
 
 async def _scryfall_get_card_by_id(card_id: str) -> dict | None:
-    card_id = (card_id or "").strip()
-    if not card_id:
-        return None
-    url = f"{SCRYFALL_BASE}/cards/{quote_plus(card_id)}"
-    try:
-        async with httpx.AsyncClient(timeout=SCRYFALL_TIMEOUT, headers=SCRYFALL_HEADERS) as client:
-            r = await client.get(url)
-            if r.status_code != 200:
-                return None
-            return r.json()
-    except Exception:
-        return None
+    return await get_card_by_id(card_id)
 
 async def _scryfall_random_commander(exclude_card_ids: set[str] | None = None, max_tries: int = 25) -> dict | None:
     """
@@ -732,75 +304,26 @@ async def _scryfall_random_commander(exclude_card_ids: set[str] | None = None, m
 
     exclude_card_ids: avoids duplicates by Scryfall card id
     """
-    exclude_card_ids = exclude_card_ids or set()
-
-    # Avoid Backgrounds (they are not valid "single commander" in your UI logic anyway)
-    # Keep it simple: random commander-legal card, paper, not background
-    scry_q = "game:paper is:commander -t:background"
-    url = f"{SCRYFALL_BASE}/cards/random?q={quote_plus(scry_q)}"
-
-    try:
-        async with httpx.AsyncClient(timeout=SCRYFALL_TIMEOUT, headers=SCRYFALL_HEADERS) as client:
-            for _ in range(max_tries):
-                r = await client.get(url)
-                if r.status_code != 200:
-                    continue
-                card = r.json()
-                cid = (card.get("id") or "").strip()
-                name = (card.get("name") or "").strip()
-                if not cid or not name:
-                    continue
-                if cid in exclude_card_ids:
-                    continue
-                return card
-    except Exception:
-        return None
-
-    return None
-
-def _t(card: dict) -> str:
-    return (card.get("type_line") or "").lower()
-
-
-def _o(card: dict) -> str:
-    # oracle_text can be empty for some layouts; that's fine for our checks
-    return (card.get("oracle_text") or "").lower()
-
+    return await random_commander(exclude_card_ids=exclude_card_ids, max_tries=max_tries)
 
 def _is_background(card: dict) -> bool:
-    return "background" in _t(card)
+    return is_background(card)
 
 
 def _has_choose_a_background(card: dict) -> bool:
-    return "choose a background" in _o(card)
+    return has_choose_a_background(card)
 
 
 def _has_friends_forever(card: dict) -> bool:
-    return "friends forever" in _o(card)
+    return has_friends_forever(card)
 
 
 def _partner_with_target_name(card: dict) -> str | None:
-    # canonical oracle text: "Partner with <Name>"
-    m = re.search(r"partner with ([^\n\(]+)", card.get("oracle_text") or "", flags=re.IGNORECASE)
-    return m.group(1).strip() if m else None
+    return partner_with_target_name(card)
 
 
 async def _scryfall_is_partner_exact_name(name: str) -> bool:
-    name = (name or "").strip()
-    if not name:
-        return False
-    scry_q = f'!"{name}" is:partner'
-    url = f"{SCRYFALL_BASE}/cards/search?q={quote_plus(scry_q)}&unique=cards"
-    try:
-        async with httpx.AsyncClient(timeout=SCRYFALL_TIMEOUT, headers=SCRYFALL_HEADERS) as client:
-            r = await client.get(url)
-            if r.status_code != 200:
-                return False
-            payload = r.json()
-            total = int(payload.get("total_cards") or 0)
-            return total > 0
-    except Exception:
-        return False
+    return await is_partner_exact_name(name)
 
 
 async def _validate_commander_combo(c1: dict, c2: dict | None) -> str | None:
@@ -1023,8 +546,8 @@ async def clear_data():
         if FILE_PATH.exists():
             FILE_PATH.unlink()
         # Löschen von start.txt, falls sie existiert
-        if Path("start.txt").exists():
-            Path("start.txt").unlink()
+        if START_FILE_PATH.exists():
+            START_FILE_PATH.unlink()
         # Löschen von pairings.json, falls sie existiert
         if PAIRINGS_PATH.exists():
             PAIRINGS_PATH.unlink()
@@ -1099,27 +622,21 @@ def _debug_start_raffle_in_memory(raffle_list: list[dict]) -> dict:
     Assumes RAFFLE_LOCK is held by caller.
     """
     # create start.txt
-    start_file = Path("start.txt")
+    start_file = START_FILE_PATH
     with start_file.open("w", encoding="utf-8") as f:
         f.write("")  # empty file
 
-    deckersteller_list = [
-        e.get("deckersteller")
-        for e in raffle_list
-        if e.get("deckersteller")
-    ]
-    unique_decks = list(dict.fromkeys(deckersteller_list))
-    if len(unique_decks) < 3:
-        raise HTTPException(status_code=400, detail="Raffle kann erst ab 3 registrierten Decks gestartet werden.")
+    try:
+        assigned_count = assign_deck_owners(raffle_list)
+    except RaffleStartError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
-    cOrder, gOrder = shuffle_decks(unique_decks)
-    for creator, new_owner in zip(cOrder, gOrder):
-        update_deck_owner(creator, new_owner)
+    _atomic_write_json(FILE_PATH, raffle_list)
 
     return {
         "ok": True,
         "action": "raffle_started",
-        "assigned_count": len(unique_decks),
+        "assigned_count": assigned_count,
     }
 
 
@@ -1128,7 +645,7 @@ def _debug_start_pairings_in_memory(raffle_list: list[dict]) -> dict:
     Equivalent of /startPairings, but chooses num_pods automatically.
     Assumes RAFFLE_LOCK is held by caller.
     """
-    if not Path("start.txt").exists():
+    if not START_FILE_PATH.exists():
         raise HTTPException(status_code=400, detail="Raffle noch nicht gestartet.")
     if not _all_received_confirmed(raffle_list):
         raise HTTPException(status_code=400, detail="Nicht alle Decks wurden bestätigt.")
@@ -1248,7 +765,7 @@ async def _debug_apply_step() -> dict:
     Executes exactly one reasonable next step depending on current event state.
     Returns a result dict for JSON/HTML output.
     """
-    start_file_exists = Path("start.txt").exists()
+    start_file_exists = START_FILE_PATH.exists()
 
     async with RAFFLE_LOCK:
         raffle_list = _load_raffle_list()
@@ -1259,7 +776,7 @@ async def _debug_apply_step() -> dict:
         # Phase 1: Registration
         # -------------------------
         if phase == "registration_needed":
-            participants_file = Path("teilnehmer.txt")
+            participants_file = PARTICIPANTS_FILE_PATH
             if not participants_file.exists():
                 raise HTTPException(status_code=400, detail="teilnehmer.txt nicht gefunden.")
 
@@ -1444,7 +961,7 @@ async def customer_control_panel(request: Request):
     """
     Zeigt die Customer Control Panel Seite an, überprüft den Status von start.txt und raffle.json.
     """
-    start_file_exists = Path("start.txt").exists()
+    start_file_exists = START_FILE_PATH.exists()
 
     deck_count = -1
 
@@ -1537,95 +1054,32 @@ async def start_raffle():
     Führt den Raffle-Start durch und leitet den Benutzer zurück zum CCP.
     """
     try:
-         # Leere start.txt erstellen
-        start_file = Path("start.txt")
-        with start_file.open("w", encoding="utf-8") as f:
-            f.write("")  # Leere Datei erstellen
-        # Aktionen für den Raffle-Start (optional: hier Platz für Logik)
-        
-        deckersteller_list = []
-        if FILE_PATH.exists():
-            try:
-                with FILE_PATH.open("r", encoding="utf-8") as f:
-                    content = json.load(f)
-                    if isinstance(content, list):
-                        # Sammle alle Deckersteller
-                        deckersteller_list = [entry.get("deckersteller") for entry in content if "deckersteller" in entry]
-            except (json.JSONDecodeError, ValueError):
-                # Fehler beim Einlesen von raffle.json
-                raise HTTPException(status_code=500, detail="Fehler beim Einlesen der raffle.json-Datei.")
-                # Mindestanzahl Decks prüfen
-        unique_decks = list(dict.fromkeys(deckersteller_list))  # dedupe, Reihenfolge egal
-        if len(unique_decks) < 3:
-            raise HTTPException(
-                status_code=400,
-                detail="Raffle kann erst ab 3 registrierten Decks gestartet werden."
-            )
-        cOrder, gOrder=shuffle_decks( unique_decks )
-        for creator, new_owner in zip( cOrder, gOrder ):
-            update_deck_owner( creator, new_owner )
-
+        start_raffle_service(FILE_PATH, START_FILE_PATH)
         await notify_state_change()
-
         return RedirectResponse(url="/CCP", status_code=303)
+    except RaffleStartError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Fehler beim Starten des Raffles: {e}")
 
-def shuffle_decks(deckCreators):
-    creatorOrder = deckCreators[:]
-    giftOrder = deckCreators[:]
-    shuffleCount = 0
+def shuffle_decks(deck_creators):
+    return raffle_shuffle_decks(deck_creators)
 
-    # Shuffle, bis kein Deckersteller sein eigenes Deck erhält
-    while any([i == j for i, j in zip(giftOrder, creatorOrder)]):
-        shuffle(creatorOrder)
-        shuffle(giftOrder)
-        shuffleCount += 1
-        print('Shuffle Count is {}'.format(shuffleCount))
-    else:
-        return giftOrder, creatorOrder
 
 def update_deck_owner(deckersteller, new_deck_owner):
     """
-    Aktualisiert das Feld 'deckOwner' für einen bestimmten 'deckersteller' in der raffle.json.
+    Legacy helper kept for compatibility with existing call sites.
     """
-    try:
-        # Prüfen, ob die Datei existiert
-        if not FILE_PATH.exists():
-            print("Die Datei raffle.json existiert nicht.")
-            return
-
-        # Datei einlesen
-        with FILE_PATH.open("r", encoding="utf-8") as f:
-            content = json.load(f)
-
-        # Sicherstellen, dass der Inhalt eine Liste ist
-        if not isinstance(content, list):
-            print("Ungültiges Format in raffle.json: Erwartet wird eine Liste.")
-            return
-
-        # Den Eintrag für den angegebenen deckersteller finden
-        entry_found = False
-        for entry in content:
-            if entry.get("deckersteller") == deckersteller:
-                entry["deckOwner"] = new_deck_owner  # Feld aktualisieren
-                entry["received_confirmed"] = False
-                entry_found = True
-                break
-
-        if not entry_found:
-            print(f"Kein Eintrag für den Deckersteller '{deckersteller}' gefunden.")
-            return
-
-        # Aktualisierte Daten zurück in die Datei schreiben
-        with FILE_PATH.open("w", encoding="utf-8") as f:
-            json.dump(content, f, ensure_ascii=False, indent=4)
-
-        print(f"Der Eintrag für '{deckersteller}' wurde erfolgreich aktualisiert.")
-    except (json.JSONDecodeError, ValueError) as e:
-        print(f"Fehler beim Einlesen der raffle.json: {e}")
-    except Exception as e:
-        print(f"Ein unerwarteter Fehler ist aufgetreten: {e}")
+    data_list = _load_raffle_list()
+    updated = False
+    for entry in data_list:
+        if entry.get("deckersteller") == deckersteller:
+            entry["deckOwner"] = new_deck_owner
+            entry["received_confirmed"] = False
+            updated = True
+            break
+    if updated:
+        _atomic_write_json(FILE_PATH, data_list)
 
 @app.post("/confirm_received")
 async def confirm_received(deck_id: int = Form(...)):
@@ -1756,95 +1210,14 @@ async def commander_partner_capable(name: str = ""):
     Returns {"partner_capable": bool}
     Checks via Scryfall search: !"<exact name>" is:partner
     """
-    name = (name or "").strip()
-    if not name:
-        return JSONResponse({"partner_capable": False})
-
-    # exact name match + is:partner
-    # Scryfall exact-name search uses !"Card Name"
-    scry_q = f'!"{name}" is:partner'
-    url = f"{SCRYFALL_BASE}/cards/search?q={quote_plus(scry_q)}&unique=cards"
-
-    try:
-        async with httpx.AsyncClient(timeout=SCRYFALL_TIMEOUT, headers=SCRYFALL_HEADERS) as client:
-            r = await client.get(url)
-            if r.status_code != 200:
-                return JSONResponse({"partner_capable": False})
-
-            payload = r.json()
-            total = payload.get("total_cards") or 0
-            return JSONResponse({"partner_capable": bool(total)})
-
-    except Exception:
-        return JSONResponse({"partner_capable": False})
+    return JSONResponse({"partner_capable": await _scryfall_is_partner_exact_name(name)})
 
 async def _scryfall_named_exact(name: str) -> dict | None:
     """
     Resolve a card by exact name via Scryfall.
     Returns card JSON or None.
     """
-    name = (name or "").strip()
-    if not name:
-        return None
-
-    url = f"{SCRYFALL_BASE}/cards/named?exact={quote_plus(name)}"
-    try:
-        async with httpx.AsyncClient(timeout=SCRYFALL_TIMEOUT, headers=SCRYFALL_HEADERS) as client:
-            r = await client.get(url)
-            if r.status_code != 200:
-                return None
-            return r.json()
-    except Exception:
-        return None
-
-
-def _type_line(card: dict) -> str:
-    return (card.get("type_line") or "").lower()
-
-
-def _oracle_text(card: dict) -> str:
-    return (card.get("oracle_text") or "").lower()
-
-
-def _is_background(card: dict) -> bool:
-    # Background is a subtype; appears in type_line like "Enchantment — Background"
-    return "background" in _type_line(card)
-
-
-def _has_choose_a_background(card: dict) -> bool:
-    return "choose a background" in _oracle_text(card)
-
-
-def _has_friends_forever(card: dict) -> bool:
-    return "friends forever" in _oracle_text(card)
-
-
-def _partner_with_target_name(card: dict) -> str | None:
-    # canonical oracle text: "Partner with <Name>"
-    m = re.search(r"partner with ([^\n\(]+)", card.get("oracle_text") or "", flags=re.IGNORECASE)
-    return m.group(1).strip() if m else None
-
-
-async def _scryfall_is_partner_exact_name(name: str) -> bool:
-    """
-    True if Scryfall search finds exact name and is:partner.
-    """
-    name = (name or "").strip()
-    if not name:
-        return False
-
-    scry_q = f'!"{name}" is:partner'
-    url = f"{SCRYFALL_BASE}/cards/search?q={quote_plus(scry_q)}&unique=cards"
-    try:
-        async with httpx.AsyncClient(timeout=SCRYFALL_TIMEOUT, headers=SCRYFALL_HEADERS) as client:
-            r = await client.get(url)
-            if r.status_code != 200:
-                return False
-            payload = r.json()
-            total = int(payload.get("total_cards") or 0)
-            return total > 0
-    except Exception:
-        return False
+    return await named_exact(name)
 
 @app.get("/api/background/default")
 async def background_default():
@@ -1978,7 +1351,7 @@ async def ws_endpoint(websocket: WebSocket):
 
     # send initial signature (baseline)
     try:
-        start_file_exists = Path("start.txt").exists()
+        start_file_exists = START_FILE_PATH.exists()
         raffle_list = _load_raffle_list()
 
         if group in ("ccp", "home"):
@@ -2006,7 +1379,7 @@ async def start_pairings(num_pods: int = Form(...), hosts: list[str] = Form(defa
     async with RAFFLE_LOCK:
         raffle_list = _load_raffle_list()
 
-        if not Path("start.txt").exists():
+        if not START_FILE_PATH.exists():
             raise HTTPException(status_code=400, detail="Raffle noch nicht gestartet.")
 
         if not _all_received_confirmed(raffle_list):
