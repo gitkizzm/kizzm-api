@@ -1,5 +1,5 @@
 import uvicorn
-from fastapi import Form, HTTPException, Request
+from fastapi import Body, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from backend.schemas import DeckSchema
 from backend.app_factory import create_app
@@ -43,6 +43,10 @@ from backend.services.event_config_service import (
     load_event_settings,
     settings_as_dict,
     settings_editability,
+    apply_settings_patch,
+    save_event_settings,
+    SettingsUpdateError,
+    DEFAULT_SETTINGS,
 )
 from backend.config import (
     CACHE_MAX_ENTRIES,
@@ -182,6 +186,13 @@ def _deck_signature(deck_id: int, start_file_exists: bool, raffle_list: list[dic
 def _current_settings():
     settings, _meta = load_event_settings()
     return settings
+
+
+def _current_event_state():
+    raffle_list = _load_raffle_list()
+    pairings = _load_pairings()
+    state = detect_event_state(START_FILE_PATH.exists(), raffle_list, pairings)
+    return state, raffle_list, pairings
 
 async def notify_state_change():
     """
@@ -1245,14 +1256,57 @@ async def _scryfall_named_exact(name: str) -> dict | None:
 @app.get("/api/settings/effective")
 async def settings_effective():
     settings, meta = load_event_settings()
-    raffle_list = _load_raffle_list()
-    pairings = _load_pairings()
-    state = detect_event_state(START_FILE_PATH.exists(), raffle_list, pairings)
+    state, _raffle_list, _pairings = _current_event_state()
 
     return JSONResponse({
         "settings": settings_as_dict(settings),
         "meta": meta,
         "event_state": state.value,
+        "editability": settings_editability(state),
+    })
+
+
+@app.patch("/api/settings")
+async def settings_patch(payload: dict = Body(...)):
+    current, _meta = load_event_settings()
+    state, _raffle_list, _pairings = _current_event_state()
+
+    try:
+        updated, changed_keys = apply_settings_patch(current, payload, state)
+    except SettingsUpdateError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    save_event_settings(updated)
+    await notify_state_change()
+
+    return JSONResponse({
+        "ok": True,
+        "changed_keys": changed_keys,
+        "event_state": state.value,
+        "settings": settings_as_dict(updated),
+        "editability": settings_editability(state),
+    })
+
+
+@app.post("/api/settings/reset")
+async def settings_reset():
+    current, _meta = load_event_settings()
+    state, _raffle_list, _pairings = _current_event_state()
+
+    try:
+        updated, changed_keys = apply_settings_patch(current, settings_as_dict(DEFAULT_SETTINGS), state)
+    except SettingsUpdateError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    save_event_settings(updated)
+    await notify_state_change()
+
+    return JSONResponse({
+        "ok": True,
+        "changed_keys": changed_keys,
+        "event_state": state.value,
+        "settings": settings_as_dict(updated),
+        "meta": load_event_settings()[1],
         "editability": settings_editability(state),
     })
 

@@ -16,6 +16,7 @@ from backend.config import (
     SUGGEST_LIMIT,
     SUGGEST_MIN_CHARS,
 )
+from backend.repositories.json_store import atomic_write_json
 
 
 class EventState(str, Enum):
@@ -32,6 +33,10 @@ class SettingsLockLevel(str, Enum):
     UNTIL_RAFFLE_START = "until_raffle_start"
     UNTIL_PAIRINGS_START = "until_pairings_start"
     UNTIL_VOTING_START = "until_voting_start"
+
+
+class SettingsUpdateError(Exception):
+    pass
 
 
 class ScryfallSettings(BaseModel):
@@ -171,3 +176,74 @@ def settings_editability(event_state: EventState) -> dict[str, dict[str, Any]]:
 
 def settings_as_dict(settings: EventSettings) -> dict[str, Any]:
     return _to_dict(settings)
+
+
+def _flatten_patch(payload: dict[str, Any], prefix: str = "") -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for key, value in payload.items():
+        path = f"{prefix}.{key}" if prefix else key
+
+        # If this path is a full setting key, keep it as leaf (including dict values)
+        if path in SETTING_LOCKS:
+            out[path] = value
+            continue
+
+        if isinstance(value, dict):
+            nested = _flatten_patch(value, path)
+            out.update(nested)
+            continue
+
+        out[path] = value
+    return out
+
+
+def _set_by_dotted_path(data: dict[str, Any], dotted_key: str, value: Any) -> None:
+    parts = dotted_key.split(".")
+    cursor = data
+    for part in parts[:-1]:
+        if part not in cursor or not isinstance(cursor[part], dict):
+            cursor[part] = {}
+        cursor = cursor[part]
+    cursor[parts[-1]] = value
+
+
+def _editable_keys(event_state: EventState) -> set[str]:
+    editable = set()
+    for key, level in SETTING_LOCKS.items():
+        if _is_level_editable(level, event_state):
+            editable.add(key)
+    return editable
+
+
+def apply_settings_patch(
+    current_settings: EventSettings,
+    patch: dict[str, Any],
+    event_state: EventState,
+) -> tuple[EventSettings, list[str]]:
+    if not isinstance(patch, dict) or not patch:
+        raise SettingsUpdateError("Patch payload must be a non-empty JSON object.")
+
+    flattened = _flatten_patch(patch)
+    unknown_keys = sorted([k for k in flattened.keys() if k not in SETTING_LOCKS])
+    if unknown_keys:
+        raise SettingsUpdateError(f"Unknown settings keys: {', '.join(unknown_keys)}")
+
+    editable_keys = _editable_keys(event_state)
+    blocked = sorted([k for k in flattened.keys() if k not in editable_keys])
+    if blocked:
+        raise SettingsUpdateError(f"Settings are locked for current event state ({event_state.value}): {', '.join(blocked)}")
+
+    merged = settings_as_dict(current_settings)
+    for key, value in flattened.items():
+        _set_by_dotted_path(merged, key, value)
+
+    try:
+        updated = EventSettings.model_validate(merged)
+    except ValidationError as exc:
+        raise SettingsUpdateError(f"Validation failed: {exc}") from exc
+
+    return updated, sorted(flattened.keys())
+
+
+def save_event_settings(settings: EventSettings, path: Path = EVENT_CONFIG_FILE_PATH) -> None:
+    atomic_write_json(path, settings_as_dict(settings))
