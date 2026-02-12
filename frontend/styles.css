@@ -967,3 +967,32 @@ body.ccp-page .ccp-card{
   border-color: rgba(140,255,170,0.95);
   background: rgba(140,255,170,0.12);
 }
+
+.voting-section .report-box{
+  min-height: 280px;
+}
+
+.voting-section #votingDecksPool{
+  height:280px;
+  min-height:280px;
+  max-height:280px;
+  overflow-y:auto;
+}
+
+.voting-section .voting-places{
+  height:280px;
+  min-height:280px;
+  max-height:280px;
+}
+
+.voting-section .voting-places .report-place-slot{
+  flex: 1 1 0;
+}
+
+.voting-section .voting-places .report-dropzone{
+  height: 100%;
+}
+
+.report-player-chip--voting{
+  width:100%;
+}
