@@ -395,15 +395,23 @@ async function ensureCardPreviewLoaded(){
         }
       }
 
-      // Ein Gleichstand auf p blockiert p-1. Falls p-1 belegt ist,
-      // wird die Gleichstandsgruppe nach unten verschoben.
+      // Ein Gleichstand mit n Spielern auf Platz p benötigt n-1 freie höhere Plätze.
+      // Beispiel: 3 Spieler auf Platz 3 => Platz 2 und Platz 1 müssen frei sein.
       for(let p = 4; p >= 2; p--){
         const place = String(p);
-        const blocked = String(p - 1);
         const tieGroup = buckets[place] || [];
-        const blockedGroup = buckets[blocked] || [];
+        if(tieGroup.length <= 1) continue;
 
-        if(tieGroup.length <= 1 || blockedGroup.length === 0) continue;
+        const neededFreeHigher = Math.min(tieGroup.length - 1, p - 1);
+        let hasBlockingHigher = false;
+        for(let step = 1; step <= neededFreeHigher; step++){
+          const higher = String(p - step);
+          if((buckets[higher] || []).length > 0){
+            hasBlockingHigher = true;
+            break;
+          }
+        }
+        if(!hasBlockingHigher) continue;
 
         const snapshot = cloneBuckets(buckets);
         buckets[place] = [];
