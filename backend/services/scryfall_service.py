@@ -20,9 +20,13 @@ async def get_card_by_id(card_id: str) -> dict | None:
         return None
 
 
-async def random_commander(exclude_card_ids: set[str] | None = None, max_tries: int = 25) -> dict | None:
+async def random_commander(
+    exclude_card_ids: set[str] | None = None,
+    max_tries: int = 25,
+    query_template: str = "game:paper is:commander -t:background",
+) -> dict | None:
     exclude_card_ids = exclude_card_ids or set()
-    scry_q = "game:paper is:commander -t:background"
+    scry_q = (query_template or "game:paper is:commander -t:background").strip()
     url = f"{SCRYFALL_BASE}/cards/random?q={quote_plus(scry_q)}"
 
     try:
@@ -61,12 +65,13 @@ async def named_exact(name: str) -> dict | None:
         return None
 
 
-async def is_partner_exact_name(name: str) -> bool:
+async def is_partner_exact_name(name: str, query_template: str = '!"{name}" is:partner') -> bool:
     name = (name or "").strip()
     if not name:
         return False
 
-    scry_q = f'!"{name}" is:partner'
+    tpl = (query_template or '!"{name}" is:partner').strip()
+    scry_q = tpl.replace("{name}", name)
     url = f"{SCRYFALL_BASE}/cards/search?q={quote_plus(scry_q)}&unique=cards"
     try:
         async with httpx.AsyncClient(timeout=SCRYFALL_TIMEOUT, headers=SCRYFALL_HEADERS) as client:
