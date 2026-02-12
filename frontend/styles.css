@@ -754,6 +754,13 @@ body.ccp-page .ccp-card{
   overflow:hidden;
 }
 
+#reportPlayersPool{
+  height:240px;
+  min-height:240px;
+  max-height:240px;
+  overflow-y:auto;
+}
+
 .report-box.report-places{
   padding:4px;
 }
@@ -765,13 +772,13 @@ body.ccp-page .ccp-card{
   width:100%;
   margin:1px 0;
   padding:1px 3px 1px 1px;
-  height:30px;
+  height:39px;
   border-radius:8px;
   border:1px solid rgba(255,255,255,0.2);
   background: rgba(255,255,255,0.08);
   color: var(--text);
   cursor:grab;
-  min-height:30px;
+  min-height:39px;
   box-sizing: border-box;
   touch-action: none;
   overflow: hidden;

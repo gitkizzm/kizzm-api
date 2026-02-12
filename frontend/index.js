@@ -488,7 +488,7 @@ async function ensureCardPreviewLoaded(){
       const zone = slot.querySelector('.report-dropzone');
       const chipCount = zone ? zone.querySelectorAll('.report-player-chip').length : 0;
       if(chipCount > 0){
-        const needed = 18 + (chipCount * 32);
+        const needed = 18 + (chipCount * 39);
         occupiedTotal += needed;
         slot.style.flex = `0 0 ${needed}px`;
       }else{
