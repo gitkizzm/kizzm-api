@@ -1087,10 +1087,23 @@ async def customer_control_panel(request: Request):
             active_tables = rounds[active_round - 1] or []
             reports = ((pair.get("round_reports") or {}).get(str(active_round), {}))
             for idx, table_players in enumerate(active_tables, start=1):
+                report = reports.get(str(idx)) or {}
+                raw_places = report.get("raw_placements") or {}
+                placement_items: list[dict] = []
+                for place in ["1", "2", "3", "4"]:
+                    for player in (raw_places.get(place) or []):
+                        placement_items.append({"place": int(place), "player": player})
+
+                placement_summary = ""
+                if placement_items:
+                    placement_summary = " · ".join([f"{it['place']}. {it['player']}" for it in placement_items])
+
                 round_tables.append({
                     "table": idx,
                     "players": table_players,
-                    "has_report": bool(reports.get(str(idx))),
+                    "has_report": bool(report),
+                    "placement_items": placement_items,
+                    "placement_summary": placement_summary,
                 })
 
     if FILE_PATH.exists():

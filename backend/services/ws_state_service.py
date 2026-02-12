@@ -70,6 +70,7 @@ def global_signature(
         "pairings_phase": pair.get("phase"),
         "active_round": pair.get("active_round"),
         "pairings_hosts": pair.get("hosts"),
+        "round_reports": pair.get("round_reports") or {},
     }
     return hashlib.sha1(json.dumps(obj, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
 
