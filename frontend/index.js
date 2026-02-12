@@ -380,6 +380,21 @@ async function ensureCardPreviewLoaded(){
     while(changed){
       changed = false;
 
+      // Platz 1 darf nie geteilt sein.
+      // Bei Gleichstand auf Platz 1 rutscht die gesamte Gruppe auf Platz 2.
+      if((buckets["1"] || []).length > 1){
+        const tieTop = [...buckets["1"]];
+        buckets["1"] = [];
+        const okTop = pushDownWithCascade(buckets, 2, tieTop);
+        if(!okTop){
+          // Safety fallback: sollte bei 4 Spielern nicht passieren,
+          // wir lassen in diesem Fall den Ursprungszustand bestehen.
+          buckets["1"] = tieTop;
+        } else {
+          changed = true;
+        }
+      }
+
       // Ein Gleichstand auf p blockiert p-1. Falls p-1 belegt ist,
       // wird die Gleichstandsgruppe nach unten verschoben.
       for(let p = 4; p >= 2; p--){
