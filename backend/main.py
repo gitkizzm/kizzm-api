@@ -46,7 +46,7 @@ from backend.services.event_config_service import (
     apply_settings_patch,
     save_event_settings,
     SettingsUpdateError,
-    DEFAULT_SETTINGS,
+    reset_settings_with_locks,
 )
 from backend.config import (
     CACHE_MAX_ENTRIES,
@@ -1294,7 +1294,7 @@ async def settings_reset():
     state, _raffle_list, _pairings = _current_event_state()
 
     try:
-        updated, changed_keys = apply_settings_patch(current, settings_as_dict(DEFAULT_SETTINGS), state)
+        updated, changed_keys, skipped_locked_keys = reset_settings_with_locks(current, state)
     except SettingsUpdateError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
 
@@ -1304,6 +1304,7 @@ async def settings_reset():
     return JSONResponse({
         "ok": True,
         "changed_keys": changed_keys,
+        "skipped_locked_keys": skipped_locked_keys,
         "event_state": state.value,
         "settings": settings_as_dict(updated),
         "meta": load_event_settings()[1],

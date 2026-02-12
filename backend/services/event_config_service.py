@@ -247,3 +247,30 @@ def apply_settings_patch(
 
 def save_event_settings(settings: EventSettings, path: Path = EVENT_CONFIG_FILE_PATH) -> None:
     atomic_write_json(path, settings_as_dict(settings))
+
+
+def reset_settings_with_locks(
+    current_settings: EventSettings,
+    event_state: EventState,
+) -> tuple[EventSettings, list[str], list[str]]:
+    default_dict = settings_as_dict(DEFAULT_SETTINGS)
+    editable_keys = _editable_keys(event_state)
+
+    editable_patch: dict[str, Any] = {}
+    skipped_locked_keys: list[str] = []
+
+    for key in SETTING_LOCKS.keys():
+        value = default_dict
+        for part in key.split('.'):
+            value = value[part]
+
+        if key in editable_keys:
+            _set_by_dotted_path(editable_patch, key, value)
+        else:
+            skipped_locked_keys.append(key)
+
+    if not editable_patch:
+        return current_settings, [], sorted(skipped_locked_keys)
+
+    updated, changed_keys = apply_settings_patch(current_settings, editable_patch, event_state)
+    return updated, changed_keys, sorted(skipped_locked_keys)
