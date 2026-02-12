@@ -345,20 +345,23 @@ async function ensureCardPreviewLoaded(){
   // --- init ---
   document.addEventListener("DOMContentLoaded", async () => {
     applyCachedBackground();
-  await ensureCardPreviewLoaded();
-  cardPreview.initCardPreview();
-  // Reveal-Animation nach Erhalt-Bestätigung (Deck-Verteilung)
-  try{
-    const cp = document.getElementById("cardPreview");
-    const doReveal = (cp?.dataset?.reveal === "1");
-    const c1 = (cp?.dataset?.commander || "").trim();
-    const c2 = (cp?.dataset?.commander2 || "").trim();
 
-    if(doReveal && c1){
+    const cp = document.getElementById("cardPreview");
+    if(cp){
       await ensureCardPreviewLoaded();
-      await cardPreview.revealCommanders(c1, c2);
+      cardPreview.initCardPreview();
+
+      // Reveal-Animation nach Erhalt-Bestätigung (Deck-Verteilung)
+      try{
+        const doReveal = (cp.dataset?.reveal === "1");
+        const c1 = (cp.dataset?.commander || "").trim();
+        const c2 = (cp.dataset?.commander2 || "").trim();
+
+        if(doReveal && c1){
+          await cardPreview.revealCommanders(c1, c2);
+        }
+      }catch(_){}
     }
-  }catch(_){}
 
     // Mobile/Keyboard: focused field into view
     for (const el of [commander1Input, commander2Input]) {
