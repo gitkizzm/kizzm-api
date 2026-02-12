@@ -85,28 +85,6 @@
                 <button type="button" id="openReportModal">Ergebnis melden</button>
             </div>
         {% else %}
-        <p class="status">
-            Bitte übergebe dieses Deck an
-            <span class="status ok" style="display:inline-block; padding:4px 8px; margin-left:6px;">
-                {{ deckOwner }}
-            </span>
-        </p>
-
-        {% if existing_entry.received_confirmed %}
-            <div class="status ok" style="margin-top: 12px;">
-                Erhalt des Decks wurde bestätigt.
-            </div>
-        {% else %}
-            <form action="/confirm_received" method="post" style="margin-top: 14px;">
-                <input type="hidden" name="deck_id" value="{{ deck_id }}">
-                <div class="btn-row">
-                    <button type="submit">
-                        Erhalt bestätigen
-                    </button>
-                </div>
-            </form>
-        {% endif %}
-
         {% if existing_entry.pairing_phase == "voting" %}
             <div class="status" style="margin-top: 12px;">
                 Bitte stimme jetzt für die besten Decks ab.
@@ -129,10 +107,34 @@
                     <button type="button" id="resetBestDeckVote" class="btn-ghost">Zurücksetzen</button>
                 </div>
             </section>
-        {% elif start_file_exists and existing_entry.received_confirmed %}
+        {% else %}
+        <p class="status">
+            Bitte übergebe dieses Deck an
+            <span class="status ok" style="display:inline-block; padding:4px 8px; margin-left:6px;">
+                {{ deckOwner }}
+            </span>
+        </p>
+
+        {% if existing_entry.received_confirmed %}
+            <div class="status ok" style="margin-top: 12px;">
+                Erhalt des Decks wurde bestätigt.
+            </div>
+        {% else %}
+            <form action="/confirm_received" method="post" style="margin-top: 14px;">
+                <input type="hidden" name="deck_id" value="{{ deck_id }}">
+                <div class="btn-row">
+                    <button type="submit">
+                        Erhalt bestätigen
+                    </button>
+                </div>
+            </form>
+        {% endif %}
+
+        {% if start_file_exists and existing_entry.received_confirmed %}
             <div class="status" style="margin-top: 12px;">
                 Bitte warte auf die Pairings.
             </div>
+        {% endif %}
         {% endif %}
         {% endif %}
 

@@ -985,8 +985,14 @@ body.ccp-page .ccp-card{
   max-height:280px;
 }
 
-.report-player-subline{
-  display:block;
-  font-size:11px;
-  color:rgba(230,230,230,0.6);
+.voting-section .voting-places .report-place-slot{
+  flex: 1 1 0;
+}
+
+.voting-section .voting-places .report-dropzone{
+  height: 100%;
+}
+
+.report-player-chip--voting{
+  width:100%;
 }

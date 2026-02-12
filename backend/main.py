@@ -1627,6 +1627,18 @@ async def current_best_deck_voting(deck_id: int):
         raise HTTPException(status_code=400, detail="Deck hat keinen zugewiesenen Owner.")
 
     candidates = _best_deck_candidates_for_owner(raffle_list, owner_name)
+    raffle_by_deck_id = {
+        int(e.get("deck_id") or 0): e
+        for e in raffle_list
+        if int(e.get("deck_id") or 0) > 0
+    }
+    for candidate in candidates:
+        candidate_deck_id = int(candidate.get("deck_id") or 0)
+        owner_entry = raffle_by_deck_id.get(candidate_deck_id) or {}
+        commander_name = (owner_entry.get("commander") or "").strip()
+        commander_id = owner_entry.get("commander_id")
+        candidate["avatar_url"] = await _round_report_avatar_art_url(commander_name, commander_id)
+
     votes = (state.get("best_deck_votes") or {}).get(str(deck_id)) or {}
 
     placements = {"1": None, "2": None, "3": None}

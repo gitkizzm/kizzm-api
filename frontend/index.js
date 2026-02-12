@@ -760,13 +760,16 @@ async function ensureCardPreviewLoaded(){
   function renderVotingDeck(deck){
     if(!deck) return '';
     const id = Number(deck.deck_id || 0) || 0;
-    const builder = String(deck.deckersteller || '').trim();
     const commander = String(deck.commander || '').trim();
     const title = commander || `Deck #${id}`;
-    const subline = builder ? `Erbauer: ${builder}` : `Deck #${id}`;
-    return `<div class="report-player-chip" draggable="true" data-deck-id="${id}" title="${escapeHtml(title)}">
-      <div class="report-player-avatar"><span class="report-player-avatar-fallback">${escapeHtml(String(id))}</span></div>
-      <div class="report-player-name">${escapeHtml(title)}<span class="report-player-subline">${escapeHtml(subline)}</span></div>
+    const avatarUrl = String(deck.avatar_url || '').trim();
+    const avatar = avatarUrl
+      ? `<img src="${escapeHtml(avatarUrl)}" alt="" class="report-player-avatar-img">`
+      : `<span class="report-player-avatar-fallback">${escapeHtml(String(title).slice(0, 1).toUpperCase())}</span>`;
+
+    return `<div class="report-player-chip report-player-chip--matchup report-player-chip--content-left report-player-chip--voting" draggable="true" data-deck-id="${id}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">
+      <div class="report-player-avatar">${avatar}</div>
+      <div class="report-player-name">${escapeHtml(title)}</div>
     </div>`;
   }
 
