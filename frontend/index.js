@@ -44,9 +44,42 @@ async function ensureCardPreviewLoaded(){
   const commander1Id = document.getElementById("commander_id");
   const commander2Id = document.getElementById("commander2_id");
   const submitBtn = document.getElementById("submitBtn");
+  const commander2LiveErrorEl = document.getElementById("commander2LiveError");
 
   let commander1Confirmed = false;
   let commander2Confirmed = false;
+  let commander2LiveError = "";
+
+  function setCommander2LiveError(message){
+    commander2LiveError = (message || "").trim();
+    if(!commander2LiveErrorEl) return;
+    commander2LiveErrorEl.textContent = commander2LiveError;
+    commander2LiveErrorEl.style.display = commander2LiveError ? "block" : "none";
+  }
+
+  async function validateCommanderComboNow(){
+    const c1id = (commander1Id?.value || "").trim();
+    const c2id = (commander2Id?.value || "").trim();
+    if(!c1id || !c2id){
+      setCommander2LiveError("");
+      return true;
+    }
+
+    try{
+      const params = new URLSearchParams({ commander_id: c1id, commander2_id: c2id });
+      const r = await fetch(`/api/validate_commander_combo?${params.toString()}`, { cache:"no-store" });
+      const data = await r.json();
+      if(r.ok && data?.legal){
+        setCommander2LiveError("");
+        return true;
+      }
+      setCommander2LiveError(data?.error || "Diese Commander-Kombination ist nicht legal.");
+      return false;
+    }catch(_){
+      setCommander2LiveError("Die Legalitätsprüfung ist aktuell nicht erreichbar. Bitte erneut versuchen.");
+      return false;
+    }
+  }
 
   function updateSubmitEnabled(){
     if(!submitBtn) return;
@@ -61,7 +94,8 @@ async function ensureCardPreviewLoaded(){
     // wenn commander2 gesetzt ist, muss commander1 gesetzt & confirmed sein
     const comboOk = !c2HasText || (c1HasText && commander1Confirmed);
 
-    submitBtn.disabled = !(c1Ok && c2Ok && comboOk);
+    const legalityOk = !commander2LiveError;
+    submitBtn.disabled = !(c1Ok && c2Ok && comboOk && legalityOk);
   }
 
   let commander1ConfirmedName = null;
@@ -131,6 +165,7 @@ async function ensureCardPreviewLoaded(){
         commander2Input.value = "";
         if (commander2Id) commander2Id.value = "";
         commander2Confirmed = false;
+        setCommander2LiveError("");
         hideBox(commander2Box);
     }
     updateSubmitEnabled();
@@ -198,8 +233,10 @@ async function ensureCardPreviewLoaded(){
     if (commander1Id) commander1Id.value = "";
     // editing commander1 invalidates commander2
     setCommander2Enabled(false);
+    setCommander2LiveError("");
     } else if (inputEl === commander2Input) {
     commander2Confirmed = false;
+    setCommander2LiveError("");
     if (commander2Id) commander2Id.value = "";
     }
     updateSubmitEnabled();
@@ -240,6 +277,11 @@ async function ensureCardPreviewLoaded(){
         hideBox(boxEl);
 
         if(onPicked) await onPicked(name);
+
+        if (inputEl === commander2Input) {
+          const legal = await validateCommanderComboNow();
+          if (!legal) commander2Confirmed = false;
+        }
 
         updateSubmitEnabled();
     });
@@ -350,6 +392,7 @@ async function ensureCardPreviewLoaded(){
       if(v.length === 0){
         commander2Confirmed = false;
         if (commander2Id) commander2Id.value = "";
+        setCommander2LiveError("");
 
         await ensureCardPreviewLoaded();
         cardPreview.resetCommander2();
@@ -371,6 +414,7 @@ async function ensureCardPreviewLoaded(){
     setCommander2Enabled(false);
     }
 
+    setCommander2LiveError("");
     updateSubmitEnabled();
 
     // start WS
