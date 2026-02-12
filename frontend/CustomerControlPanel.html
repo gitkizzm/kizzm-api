@@ -112,6 +112,24 @@
                 </div>
             {% endif %}
 
+            {% if pairings_phase == "playing" and active_round > 0 and round_tables %}
+                <div class="status" style="margin-top: 14px;">
+                    <strong>Rundenreport zurücksetzen (Runde {{ active_round }})</strong>
+                    <div style="margin-top: 10px; display: grid; gap: 8px;">
+                        {% for table in round_tables %}
+                            <div class="round-report-row">
+                                <div>Tisch {{ table.table }} · {{ table.players|join(', ') }}</div>
+                                <form action="/resetRoundReport" method="post" style="margin:0;">
+                                    <input type="hidden" name="round_no" value="{{ active_round }}">
+                                    <input type="hidden" name="table_no" value="{{ table.table }}">
+                                    <button type="submit" {% if not table.has_report %}disabled{% endif %}>Meldung zurücksetzen</button>
+                                </form>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            {% endif %}
+
             <div class="btn-row" style="justify-content: space-between;">
                 <!-- Clear wird erst nach Confirm abgeschickt -->
                 <form id="clearForm" action="/clear" method="post" style="margin:0;">

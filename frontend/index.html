@@ -60,6 +60,9 @@
                     </div>
                 </div>
             </div>
+            <div class="btn-row" style="margin-top: 12px;">
+                <button type="button" id="openReportModal">Ergebnis melden</button>
+            </div>
         {% else %}
         <p class="status">
             Bitte übergebe dieses Deck an
@@ -166,5 +169,27 @@
         <script src="/static/index.js" defer></script>
 
     </div>
+    <div class="modal-overlay" id="reportModal" aria-hidden="true">
+        <div class="modal report-modal" role="dialog" aria-modal="true" aria-labelledby="reportModalTitle">
+            <h2 id="reportModalTitle">Ergebnis melden</h2>
+            <div class="report-layout">
+                <div class="report-box" id="reportPlayersPool"></div>
+                <div class="report-box report-places" id="reportPlaces">
+                    {% for place in [1,2,3,4] %}
+                        <div class="report-place-slot" data-place="{{ place }}">
+                            <div class="report-place-title">Platz {{ place }}</div>
+                            <div class="report-dropzone" data-place="{{ place }}"></div>
+                        </div>
+                    {% endfor %}
+                </div>
+            </div>
+            <p id="reportModalError" class="field-error" style="display:none;"></p>
+            <div class="modal-actions">
+                <button type="button" class="btn-ghost" id="cancelReport">Abbrechen</button>
+                <button type="button" id="submitReport">Überschreiben</button>
+            </div>
+        </div>
+    </div>
+
 </body>
 </html>
