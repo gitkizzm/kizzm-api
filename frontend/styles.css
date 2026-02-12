@@ -726,6 +726,23 @@ body.ccp-page .ccp-card{
   align-items:center;
 }
 
+.round-report-title-wrap{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+
+.round-report-info-wrap{
+  margin-left:0;
+}
+
+.round-report-info-wrap .info-tooltip{
+  top: calc(100% + 8px);
+  right: auto;
+  left: 0;
+  transform: none;
+}
+
 .pairing-status{
   display:flex;
   flex-direction:column;

@@ -118,7 +118,26 @@
                     <div style="margin-top: 10px; display: grid; gap: 8px;">
                         {% for table in round_tables %}
                             <div class="round-report-row">
-                                <div>Tisch {{ table.table }} · {{ table.players|join(', ') }}</div>
+                                <div class="round-report-title-wrap">
+                                    <div>
+                                        Tisch {{ table.table }}
+                                        {% if table.has_report and table.placement_summary %}
+                                            · {{ table.placement_summary }}
+                                        {% else %}
+                                            · kein Ergebnis
+                                        {% endif %}
+                                    </div>
+                                    {% if table.has_report and table.placement_items %}
+                                        <span class="info-wrap round-report-info-wrap">
+                                            <button type="button" class="info-btn" aria-label="Platzierungen anzeigen">i</button>
+                                            <div class="info-tooltip">
+                                                {% for item in table.placement_items %}
+                                                    <div class="tooltip-item">{{ item.place }}. {{ item.player }}</div>
+                                                {% endfor %}
+                                            </div>
+                                        </span>
+                                    {% endif %}
+                                </div>
                                 <form action="/resetRoundReport" method="post" style="margin:0;">
                                     <input type="hidden" name="round_no" value="{{ active_round }}">
                                     <input type="hidden" name="table_no" value="{{ table.table }}">

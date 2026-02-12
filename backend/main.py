@@ -844,6 +844,70 @@ def _debug_next_round_or_end_in_memory(raffle_list: list[dict], state: dict) -> 
     return {"ok": True, "action": "ended_play_phase", "active_round": active, "phase": "voting"}
 
 
+def _debug_report_missing_round_results_in_memory(state: dict) -> dict:
+    """
+    Meldet für die aktive Runde fehlende Tisch-Ergebnisse automatisch.
+
+    Für jeden fehlenden Tischreport werden die Tisch-Spieler zufällig verteilt und
+    als Einzelplatzierungen (1-4) gespeichert.
+
+    Assumes RAFFLE_LOCK is held by caller.
+    """
+    if (state.get("phase") or "").strip().lower() != "playing":
+        return {"ok": True, "action": "noop", "message": "Spielphase ist nicht aktiv."}
+
+    rounds = state.get("rounds") or []
+    active_round = int(state.get("active_round") or 0)
+    if active_round <= 0 or active_round > len(rounds):
+        return {"ok": True, "action": "noop", "message": "Keine gültige aktive Runde gefunden."}
+
+    tables = rounds[active_round - 1] or []
+    reports_for_round = _pairings_reports_bucket(state, active_round)
+
+    created_reports: list[dict] = []
+    for idx, table_players in enumerate(tables, start=1):
+        table_key = str(idx)
+        if reports_for_round.get(table_key):
+            continue
+
+        shuffled_players = [p for p in (table_players or []) if p]
+        shuffle(shuffled_players)
+
+        raw_placements = {"1": [], "2": [], "3": [], "4": []}
+        for place, player in zip(["1", "2", "3", "4"], shuffled_players):
+            raw_placements[place] = [player]
+
+        reports_for_round[table_key] = {
+            "round": active_round,
+            "table": idx,
+            "players": table_players,
+            "raw_placements": raw_placements,
+            "resolved_places": _resolve_round_places(raw_placements),
+            "reported_by": "Debug-Endfreund",
+            "submitted_at": datetime.now(timezone.utc).isoformat(),
+        }
+        created_reports.append({"table": idx, "players": table_players})
+
+    if created_reports:
+        _atomic_write_pairings(state)
+        return {
+            "ok": True,
+            "action": "reported_missing_round_results",
+            "active_round": active_round,
+            "reported_count": len(created_reports),
+            "reported_tables": created_reports,
+            "phase": "playing",
+        }
+
+    return {
+        "ok": True,
+        "action": "noop",
+        "active_round": active_round,
+        "message": "Alle Tische der aktiven Runde haben bereits Ergebnisse.",
+        "phase": "playing",
+    }
+
+
 async def _debug_apply_step() -> dict:
     """
     Executes exactly one reasonable next step depending on current event state.
@@ -966,6 +1030,10 @@ async def _debug_apply_step() -> dict:
             st = _load_pairings()
             if not st:
                 return {"ok": True, "phase": phase, "action": "noop", "message": "Pairings-State fehlt."}
+            report_result = _debug_report_missing_round_results_in_memory(st)
+            if report_result.get("action") == "reported_missing_round_results":
+                report_result["phase"] = phase
+                return report_result
             result = _debug_next_round_or_end_in_memory(raffle_list, st)
             result["phase"] = phase
             return result
@@ -1019,10 +1087,23 @@ async def customer_control_panel(request: Request):
             active_tables = rounds[active_round - 1] or []
             reports = ((pair.get("round_reports") or {}).get(str(active_round), {}))
             for idx, table_players in enumerate(active_tables, start=1):
+                report = reports.get(str(idx)) or {}
+                raw_places = report.get("raw_placements") or {}
+                placement_items: list[dict] = []
+                for place in ["1", "2", "3", "4"]:
+                    for player in (raw_places.get(place) or []):
+                        placement_items.append({"place": int(place), "player": player})
+
+                placement_summary = ""
+                if placement_items:
+                    placement_summary = " · ".join([f"{it['place']}. {it['player']}" for it in placement_items])
+
                 round_tables.append({
                     "table": idx,
                     "players": table_players,
-                    "has_report": bool(reports.get(str(idx))),
+                    "has_report": bool(report),
+                    "placement_items": placement_items,
+                    "placement_summary": placement_summary,
                 })
 
     if FILE_PATH.exists():
