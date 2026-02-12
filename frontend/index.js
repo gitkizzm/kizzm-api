@@ -33,6 +33,17 @@ async function ensureCardPreviewLoaded(){
   const rootCard = document.querySelector(".glass-card");
   const currentDeckId = Number(rootCard?.dataset?.deckId || "0") || 0;
 
+  const reportModal = document.getElementById("reportModal");
+  const openReportModalBtn = document.getElementById("openReportModal");
+  const cancelReportBtn = document.getElementById("cancelReport");
+  const submitReportBtn = document.getElementById("submitReport");
+  const reportTitleEl = document.getElementById("reportModalTitle");
+  const reportPlayersPoolEl = document.getElementById("reportPlayersPool");
+  const reportPlacesEl = document.getElementById("reportPlaces");
+  const reportModalErrorEl = document.getElementById("reportModalError");
+
+  let reportState = null;
+
   const commander1Input = document.getElementById("commander");
   const commander1Box = document.getElementById("commanderSuggestBox");
   const commander1Spinner = document.getElementById("commanderSpinner");
@@ -297,6 +308,322 @@ async function ensureCardPreviewLoaded(){
   }
 
   // --- WebSocket live reload ("/" + "/?deck_id=...") ---
+
+  function setReportError(msg){
+    if(!reportModalErrorEl) return;
+    const message = (msg || "").trim();
+    reportModalErrorEl.textContent = message;
+    reportModalErrorEl.style.display = message ? "block" : "none";
+  }
+
+  function reportAvatarLabel(name){
+    const trimmed = String(name || "").trim();
+    return trimmed ? trimmed[0].toUpperCase() : "?";
+  }
+
+  function reportDisplayName(name){
+    const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
+    if(parts.length <= 1) return String(name || "").trim();
+    return `${parts[0]} ${parts[1][0].toUpperCase()}.`;
+  }
+
+  function renderReportPlayer(name){
+    const meta = reportState?.playerMeta?.[name] || {};
+    const avatar = meta.avatar_url
+      ? `<img src="${escapeHtml(meta.avatar_url)}" alt="" class="report-player-avatar-img">`
+      : `<span class="report-player-avatar-fallback">${escapeHtml(reportAvatarLabel(name))}</span>`;
+
+    return `<div class="report-player-chip" draggable="true" data-player="${escapeHtml(name)}" title="${escapeHtml(name)}">
+      <div class="report-player-avatar">${avatar}</div>
+      <div class="report-player-name">${escapeHtml(reportDisplayName(name))}</div>
+    </div>`;
+  }
+
+  function reportCollectPlacements(){
+    const result = { "1": [], "2": [], "3": [], "4": [] };
+    for(const place of ["1","2","3","4"]){
+      const zone = reportPlacesEl?.querySelector(`.report-dropzone[data-place="${place}"]`);
+      if(!zone) continue;
+      const chips = Array.from(zone.querySelectorAll('.report-player-chip'));
+      result[place] = chips.map((el) => el.dataset.player).filter(Boolean);
+    }
+    return result;
+  }
+
+  function normalizePlacementsByRules(placements, triggerPlayer = null){
+    const buckets = {
+      "1": [...(placements["1"] || [])],
+      "2": [...(placements["2"] || [])],
+      "3": [...(placements["3"] || [])],
+      "4": [...(placements["4"] || [])],
+    };
+
+    function cloneBuckets(src){
+      return {
+        "1": [...(src["1"] || [])],
+        "2": [...(src["2"] || [])],
+        "3": [...(src["3"] || [])],
+        "4": [...(src["4"] || [])],
+      };
+    }
+
+    function pushDownWithCascade(state, place, incoming){
+      if(place > 4) return false;
+      const key = String(place);
+      const prev = state[key] || [];
+      state[key] = [...incoming];
+      if(prev.length === 0) return true;
+      return pushDownWithCascade(state, place + 1, prev);
+    }
+
+    let changed = true;
+    while(changed){
+      changed = false;
+
+      // Platz 1 darf nie geteilt sein.
+      // Bei Gleichstand auf Platz 1 rutscht die gesamte Gruppe auf Platz 2.
+      if((buckets["1"] || []).length > 1){
+        const tieTop = [...buckets["1"]];
+        buckets["1"] = [];
+        const okTop = pushDownWithCascade(buckets, 2, tieTop);
+        if(!okTop){
+          // Safety fallback: sollte bei 4 Spielern nicht passieren,
+          // wir lassen in diesem Fall den Ursprungszustand bestehen.
+          buckets["1"] = tieTop;
+        } else {
+          changed = true;
+        }
+      }
+
+      // Ein Gleichstand auf p blockiert p-1. Falls p-1 belegt ist,
+      // wird die Gleichstandsgruppe nach unten verschoben.
+      for(let p = 4; p >= 2; p--){
+        const place = String(p);
+        const blocked = String(p - 1);
+        const tieGroup = buckets[place] || [];
+        const blockedGroup = buckets[blocked] || [];
+
+        if(tieGroup.length <= 1 || blockedGroup.length === 0) continue;
+
+        const snapshot = cloneBuckets(buckets);
+        buckets[place] = [];
+        const ok = pushDownWithCascade(buckets, p + 1, tieGroup);
+
+        if(!ok){
+          // Sonderfall laut Anforderung:
+          // Wenn die Umverteilung durch den neu gesetzten Spieler ausgelöst wurde
+          // und nach unten kein Platz mehr frei ist, rutscht dieser auf Platz 1.
+          const reset = cloneBuckets(snapshot);
+          if(triggerPlayer){
+            for(const k of ["1", "2", "3", "4"]){
+              reset[k] = (reset[k] || []).filter((name) => name !== triggerPlayer);
+            }
+            reset["1"] = [...(reset["1"] || []), triggerPlayer];
+            return normalizePlacementsByRules(reset, null);
+          }
+          return reset;
+        }
+
+        changed = true;
+      }
+    }
+
+    return buckets;
+  }
+
+  function applyNormalizedPlacementsToState(triggerPlayer = null){
+    if(!reportState) return;
+    const placements = reportCollectPlacements();
+
+    const normalized = normalizePlacementsByRules(placements, triggerPlayer);
+    reportState.placements = [];
+    for(const place of ["1","2","3","4"]){
+      for(const player of normalized[place] || []){
+        reportState.placements.push({ player, place });
+      }
+    }
+    reportRender();
+  }
+
+  function reportRender(){
+    if(!reportState || !reportPlayersPoolEl || !reportPlacesEl) return;
+    reportPlayersPoolEl.innerHTML = "";
+    const poolPlayers = reportState.players.filter((p) => !reportState.placements.some((pl) => pl.player === p));
+    reportPlayersPoolEl.innerHTML = poolPlayers.map(renderReportPlayer).join("");
+
+    for(const place of ["1","2","3","4"]){
+      const zone = reportPlacesEl.querySelector(`.report-dropzone[data-place="${place}"]`);
+      if(!zone) continue;
+      const placed = reportState.placements.filter((pl) => pl.place === place).map((pl) => pl.player);
+      zone.innerHTML = placed.map(renderReportPlayer).join("");
+    }
+    reportBindDraggable();
+  }
+
+  function reportBindDraggable(){
+    let touchDraggedPlayer = null;
+
+    const zones = [reportPlayersPoolEl, ...Array.from(document.querySelectorAll('.report-dropzone'))].filter(Boolean);
+
+    function clearZoneHighlights(){
+      zones.forEach((z) => z.classList.remove('is-over'));
+    }
+
+    function zoneAtPoint(clientX, clientY){
+      const el = document.elementFromPoint(clientX, clientY);
+      if(!el) return null;
+      return el.closest('#reportPlayersPool, .report-dropzone');
+    }
+
+    function placePlayerInZone(player, zone){
+      if(!player || !zone || !reportState) return;
+      reportState.placements = reportState.placements.filter((pl) => pl.player !== player);
+      const place = zone.dataset.place;
+      if(place){
+        reportState.placements.push({ player, place });
+      }
+      reportRender();
+      applyNormalizedPlacementsToState(player);
+    }
+
+    const chips = Array.from(document.querySelectorAll('.report-player-chip[draggable="true"]'));
+    chips.forEach((chip) => {
+      chip.addEventListener('dragstart', (ev) => {
+        const player = chip.dataset.player;
+        if(!player) return;
+        ev.dataTransfer?.setData('text/plain', player);
+      });
+
+      chip.addEventListener('touchstart', (ev) => {
+        const player = chip.dataset.player;
+        if(!player) return;
+        touchDraggedPlayer = player;
+        chip.classList.add('is-touch-picked');
+      }, { passive: true });
+
+      chip.addEventListener('touchmove', (ev) => {
+        if(!touchDraggedPlayer) return;
+        const t = ev.touches?.[0];
+        if(!t) return;
+        const targetZone = zoneAtPoint(t.clientX, t.clientY);
+        clearZoneHighlights();
+        targetZone?.classList.add('is-over');
+      }, { passive: true });
+
+      chip.addEventListener('touchend', (ev) => {
+        chip.classList.remove('is-touch-picked');
+        if(!touchDraggedPlayer) return;
+        const t = ev.changedTouches?.[0];
+        const targetZone = t ? zoneAtPoint(t.clientX, t.clientY) : null;
+        clearZoneHighlights();
+        if(targetZone){
+          placePlayerInZone(touchDraggedPlayer, targetZone);
+        }
+        touchDraggedPlayer = null;
+      }, { passive: true });
+    });
+
+    zones.forEach((zone) => {
+      if(zone.dataset.dragBound === '1') return;
+      zone.dataset.dragBound = '1';
+
+      zone.addEventListener('dragover', (ev) => {
+        ev.preventDefault();
+        zone.classList.add('is-over');
+      });
+      zone.addEventListener('dragleave', () => zone.classList.remove('is-over'));
+      zone.addEventListener('drop', (ev) => {
+        ev.preventDefault();
+        zone.classList.remove('is-over');
+        const player = ev.dataTransfer?.getData('text/plain');
+        placePlayerInZone(player, zone);
+      });
+    });
+  }
+
+  function closeReportModal(){
+    if(!reportModal) return;
+    reportModal.classList.remove('show');
+    reportModal.setAttribute('aria-hidden', 'true');
+    openReportModalBtn?.focus();
+  }
+
+  async function loadReportData(){
+    const r = await fetch(`/api/round-report/current?deck_id=${encodeURIComponent(currentDeckId)}`, { cache:'no-store' });
+    const data = await r.json();
+    if(!r.ok) throw new Error(data?.detail || 'Rundenreport konnte nicht geladen werden.');
+
+    reportState = {
+      round: data.round,
+      table: data.table,
+      players: data.players || [],
+      playerMeta: data.player_meta || {},
+      hasReport: !!data.has_report,
+      placements: [],
+    };
+
+    if(data.report?.raw_placements){
+      for(const place of ["1","2","3","4"]){
+        for(const player of (data.report.raw_placements[place] || [])){
+          reportState.placements.push({ player, place });
+        }
+      }
+    }
+
+    if(reportTitleEl){
+      reportTitleEl.textContent = `Ergebnis melden, Runde ${reportState.round}, Tisch ${reportState.table}`;
+    }
+
+    reportRender();
+    setReportError(reportState.hasReport ? 'Für diesen Tisch wurde bereits ein Ergebnis gemeldet.' : '');
+    if(submitReportBtn) submitReportBtn.disabled = reportState.hasReport;
+  }
+
+  function initReportModal(){
+    if(!reportModal || !openReportModalBtn) return;
+
+    openReportModalBtn.addEventListener('click', async () => {
+      try{
+        await loadReportData();
+        reportModal.classList.add('show');
+        reportModal.setAttribute('aria-hidden', 'false');
+      }catch(err){
+        alert(err?.message || 'Rundenreport konnte nicht geladen werden.');
+      }
+    });
+
+    cancelReportBtn?.addEventListener('click', closeReportModal);
+
+    reportModal.addEventListener('click', (ev) => {
+      if(ev.target === reportModal) closeReportModal();
+    });
+
+    submitReportBtn?.addEventListener('click', async () => {
+      if(!reportState) return;
+      applyNormalizedPlacementsToState();
+      const placements = reportCollectPlacements();
+      const assignedCount = Object.values(placements).flat().length;
+      if(assignedCount !== reportState.players.length){
+        setReportError('Bitte alle Spieler auf eine Platzierung ziehen.');
+        return;
+      }
+
+      try{
+        const r = await fetch('/api/round-report/submit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ deck_id: currentDeckId, placements }),
+        });
+        const data = await r.json();
+        if(!r.ok) throw new Error(data?.detail || 'Speichern fehlgeschlagen.');
+        closeReportModal();
+        location.reload();
+      }catch(err){
+        setReportError(err?.message || 'Speichern fehlgeschlagen.');
+      }
+    });
+  }
+
   function wsUrl(params){
     const proto = (location.protocol === "https:") ? "wss" : "ws";
     return `${proto}://${location.host}/ws?${params}`;
@@ -419,6 +746,8 @@ async function ensureCardPreviewLoaded(){
 
     setCommander2LiveError("");
     updateSubmitEnabled();
+
+    initReportModal();
 
     // start WS
     connectWS();
