@@ -376,46 +376,49 @@ async function ensureCardPreviewLoaded(){
       return pushDownWithCascade(state, place + 1, prev);
     }
 
+    function shiftTieGroupDown(state, place){
+      const key = String(place);
+      const tieGroup = [...(state[key] || [])];
+      state[key] = [];
+      return pushDownWithCascade(state, place + 1, tieGroup);
+    }
+
     let changed = true;
     while(changed){
       changed = false;
 
       // Platz 1 darf nie geteilt sein.
-      // Bei Gleichstand auf Platz 1 rutscht die gesamte Gruppe auf Platz 2.
       if((buckets["1"] || []).length > 1){
-        const tieTop = [...buckets["1"]];
-        buckets["1"] = [];
-        const okTop = pushDownWithCascade(buckets, 2, tieTop);
-        if(!okTop){
-          // Safety fallback: sollte bei 4 Spielern nicht passieren,
-          // wir lassen in diesem Fall den Ursprungszustand bestehen.
-          buckets["1"] = tieTop;
-        } else {
-          changed = true;
-        }
+        const snapshot = cloneBuckets(buckets);
+        const okTop = shiftTieGroupDown(buckets, 1);
+        if(!okTop) return snapshot;
+        changed = true;
       }
 
-      // Ein Gleichstand mit n Spielern auf Platz p benötigt n-1 freie höhere Plätze.
-      // Beispiel: 3 Spieler auf Platz 3 => Platz 2 und Platz 1 müssen frei sein.
-      for(let p = 4; p >= 2; p--){
+      // Für Gleichstand auf Platz p mit n Spielern müssen n-1 höhere Plätze frei sein.
+      // Sind sie nicht frei (oder existieren nicht genug höhere Plätze), rutscht die Gruppe nach unten.
+      for(let p = 2; p <= 4; p++){
         const place = String(p);
         const tieGroup = buckets[place] || [];
         if(tieGroup.length <= 1) continue;
 
-        const neededFreeHigher = Math.min(tieGroup.length - 1, p - 1);
-        let hasBlockingHigher = false;
-        for(let step = 1; step <= neededFreeHigher; step++){
-          const higher = String(p - step);
-          if((buckets[higher] || []).length > 0){
-            hasBlockingHigher = true;
-            break;
+        const neededFreeHigher = tieGroup.length - 1;
+        let mustMoveDown = neededFreeHigher > (p - 1);
+
+        if(!mustMoveDown){
+          for(let step = 1; step <= neededFreeHigher; step++){
+            const higher = String(p - step);
+            if((buckets[higher] || []).length > 0){
+              mustMoveDown = true;
+              break;
+            }
           }
         }
-        if(!hasBlockingHigher) continue;
+
+        if(!mustMoveDown) continue;
 
         const snapshot = cloneBuckets(buckets);
-        buckets[place] = [];
-        const ok = pushDownWithCascade(buckets, p + 1, tieGroup);
+        const ok = shiftTieGroupDown(buckets, p);
 
         if(!ok){
           // Sonderfall laut Anforderung:
