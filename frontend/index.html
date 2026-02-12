@@ -63,7 +63,12 @@
                     {% for slot in slots %}
                     <div class="pairing-chip-slot {{ slot.side }}">
                         {% if slot.player %}
-                        <div class="report-player-chip report-player-chip--matchup is-static" title="{{ slot.player }}" aria-label="{{ slot.player }}">
+                        {% set content_align = 'right' if slot.side == 'left' else 'left' %}
+                        <div
+                            class="report-player-chip report-player-chip--matchup report-player-chip--content-{{ content_align }} is-static"
+                            data-player="{{ slot.player }}"
+                            title="{{ slot.player }}"
+                            aria-label="{{ slot.player }}">
                             <div class="report-player-avatar">
                                 <span class="report-player-avatar-fallback">{{ slot.player[:1]|upper }}</span>
                             </div>

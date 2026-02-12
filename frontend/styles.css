@@ -847,6 +847,27 @@ body.ccp-page .ccp-card{
   width:clamp(120px, 100%, 220px);
 }
 
+
+.report-player-chip--content-left .report-player-name{
+  justify-content:flex-start;
+  text-align:left;
+}
+
+.report-player-chip--content-right{
+  justify-content:flex-end;
+  padding:1px 1px 1px 3px;
+}
+
+.report-player-chip--content-right .report-player-avatar{
+  order:2;
+}
+
+.report-player-chip--content-right .report-player-name{
+  order:1;
+  justify-content:flex-end;
+  text-align:right;
+}
+
 .report-player-avatar{
   flex: 0 0 auto;
   height: 100%;
