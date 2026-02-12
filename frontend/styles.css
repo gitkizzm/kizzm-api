@@ -718,3 +718,113 @@ body.ccp-page{
 body.ccp-page .ccp-card{
   max-height: none;
 }
+
+.round-report-row{
+  display:flex;
+  gap:10px;
+  justify-content:space-between;
+  align-items:center;
+}
+
+.report-modal{
+  width:min(760px, calc(100vw - 28px));
+}
+
+.report-layout{
+  display:grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap:10px;
+}
+
+.report-box{
+  border:1px solid rgba(255,255,255,0.2);
+  border-radius:12px;
+  padding:8px;
+  min-height:240px;
+  background: rgba(0,0,0,0.2);
+}
+
+.report-player-chip{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  width:100%;
+  margin:4px 0;
+  padding:6px 8px;
+  border-radius:9px;
+  border:1px solid rgba(255,255,255,0.2);
+  background: rgba(255,255,255,0.08);
+  color: var(--text);
+  cursor:grab;
+  min-height:42px;
+}
+
+.report-player-avatar{
+  flex: 0 0 auto;
+  height: 28px;
+  width: auto;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  overflow:hidden;
+}
+
+.report-player-avatar-img{
+  height:100%;
+  width:auto;
+  object-fit:cover;
+  border-radius:0;
+  display:block;
+}
+
+.report-player-avatar-fallback{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  width:28px;
+  height:28px;
+  background: rgba(90,140,255,0.45);
+  color: var(--text);
+  font-size:12px;
+  font-weight:700;
+}
+
+.report-player-name{
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.report-place-slot + .report-place-slot{ margin-top: 8px; }
+
+.report-dropzone{
+  position:relative;
+  min-height:44px;
+  border:1px dashed rgba(255,255,255,0.32);
+  border-radius:10px;
+  padding:4px;
+}
+
+.report-dropzone::before{
+  content: attr(data-place-label);
+  position:absolute;
+  inset:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  color: rgba(230,230,230,0.35);
+  font-weight:700;
+  pointer-events:none;
+}
+
+.report-dropzone .report-player-chip{
+  position:relative;
+  z-index:1;
+}
+
+.report-dropzone.is-over,
+#reportPlayersPool.is-over{
+  border-color: rgba(140,255,170,0.95);
+  background: rgba(140,255,170,0.12);
+}
