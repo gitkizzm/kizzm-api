@@ -726,6 +726,55 @@ body.ccp-page .ccp-card{
   align-items:center;
 }
 
+.pairing-status{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+
+.pairing-table-label{
+  font-weight:700;
+}
+
+.pairing-matchup-grid{
+  display:grid;
+  grid-template-columns:minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-rows:auto auto;
+  column-gap:10px;
+  row-gap:10px;
+  align-items:center;
+}
+
+.pairing-chip-slot{
+  display:flex;
+}
+
+.pairing-chip-slot.left{
+  justify-content:flex-start;
+}
+
+.pairing-chip-slot.right{
+  justify-content:flex-end;
+}
+
+.pairing-vs-chip{
+  grid-column:2;
+  grid-row:1 / span 2;
+  align-self:center;
+  justify-self:center;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  min-width:50px;
+  height:36px;
+  border-radius:8px;
+  border:1px solid rgba(255,255,255,0.25);
+  background:rgba(255,255,255,0.12);
+  color:var(--text);
+  font-weight:700;
+  letter-spacing:0.04em;
+}
+
 .report-modal{
   width:min(760px, calc(100vw - 28px));
 }
@@ -787,6 +836,15 @@ body.ccp-page .ccp-card{
 .report-player-chip.is-touch-picked{
   outline: 1px solid rgba(140,255,170,0.95);
   background: rgba(140,255,170,0.18);
+}
+
+.report-player-chip.is-static{
+  cursor:default;
+  touch-action:auto;
+}
+
+.report-player-chip--matchup{
+  width:clamp(120px, 100%, 220px);
 }
 
 .report-player-avatar{
