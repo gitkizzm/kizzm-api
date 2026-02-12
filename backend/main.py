@@ -1,5 +1,5 @@
 import uvicorn
-from fastapi import Form, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from backend.schemas import DeckSchema
 from backend.app_factory import create_app
@@ -26,6 +26,7 @@ from backend.services.raffle_service import (
     start_raffle as start_raffle_service,
 )
 from backend.routes_debug import register_debug_routes
+from backend.routes_ws import register_ws_routes
 from backend.services.ws_state_service import (
     WSManager,
     deck_signature,
@@ -1260,63 +1261,14 @@ async def background_commander(name: str = ""):
     except Exception:
         return JSONResponse({"url": None, "zoom": COMMANDER_BG_ZOOM})
 
-@app.websocket("/ws")
-async def ws_endpoint(websocket: WebSocket):
-    """
-    Client connects with:
-      - /ws?channel=ccp
-      - /ws?channel=home
-      - /ws?deck_id=<int>
-    IMPORTANT: accept() MUST happen before any other logic, otherwise Starlette returns 403.
-    """
-    await websocket.accept()  # <- CRITICAL: accept immediately
-
-    # Now it's safe to parse params / assign groups without risking 403.
-    q = websocket.query_params
-    channel = (q.get("channel") or "").strip().lower()
-    deck_id_raw = (q.get("deck_id") or "").strip()
-
-    group = "home"
-    deck_id = None
-
-    if channel == "ccp":
-        group = "ccp"
-    elif channel == "home":
-        group = "home"
-    elif deck_id_raw:
-        try:
-            deck_id = int(deck_id_raw)
-            group = f"deck:{deck_id}"
-        except ValueError:
-            group = "home"
-
-    # register socket into group (NO accept here!)
-    ws_manager.connect_existing(websocket, group)
-
-    # send initial signature (baseline)
-    try:
-        start_file_exists = START_FILE_PATH.exists()
-        raffle_list = _load_raffle_list()
-
-        if group in ("ccp", "home"):
-            sig = _global_signature(start_file_exists, raffle_list)
-            await websocket.send_json({"type": "hello", "scope": "global", "signature": sig})
-        else:
-            sig = _deck_signature(deck_id, start_file_exists, raffle_list)  # deck_id is int
-            await websocket.send_json({"type": "hello", "scope": "deck", "deck_id": deck_id, "signature": sig})
-
-        while True:
-            msg = await websocket.receive_text()
-            if msg == "ping":
-                await websocket.send_text("pong")
-
-    except WebSocketDisconnect:
-        pass
-    except Exception:
-        # keep it quiet; optionally log
-        pass
-    finally:
-        ws_manager.disconnect(websocket, group)
+register_ws_routes(
+    app,
+    ws_manager=ws_manager,
+    start_file_exists_loader=lambda: START_FILE_PATH.exists(),
+    raffle_loader=_load_raffle_list,
+    global_signature_fn=_global_signature,
+    deck_signature_fn=_deck_signature,
+)
 
 @app.post("/startPairings")
 async def start_pairings(num_pods: int = Form(...), hosts: list[str] = Form(default=[])):
