@@ -1,9 +1,41 @@
 import uvicorn
-from fastapi import FastAPI, Form, HTTPException, Request, WebSocket, WebSocketDisconnect
+from fastapi import Form, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
-from fastapi.templating import Jinja2Templates
-from fastapi.staticfiles import StaticFiles
 from backend.schemas import DeckSchema
+from backend.app_factory import create_app
+from backend.repositories.json_store import atomic_write_json
+from backend.repositories.pairings_repository import load_pairings, write_pairings
+from backend.repositories.raffle_repository import load_raffle_list
+from backend.services.card_rules import (
+    get_image_url,
+    has_choose_a_background,
+    has_friends_forever,
+    is_background,
+    partner_with_target_name,
+)
+from backend.services.scryfall_service import (
+    get_card_by_id,
+    is_partner_exact_name,
+    named_exact,
+    random_commander,
+)
+from backend.config import (
+    CACHE_MAX_ENTRIES,
+    CACHE_TTL_SECONDS,
+    COMMANDER_BG_ZOOM,
+    DEFAULT_BG_QUERY,
+    DEFAULT_BG_ZOOM,
+    MAX_ROUNDS,
+    PAIRINGS_FILE_PATH,
+    PARTICIPANTS_FILE_PATH,
+    RAFFLE_FILE_PATH,
+    SCRYFALL_BASE,
+    SCRYFALL_HEADERS,
+    SCRYFALL_TIMEOUT,
+    START_FILE_PATH,
+    SUGGEST_LIMIT,
+    SUGGEST_MIN_CHARS,
+)
 import json
 import hashlib
 import asyncio
@@ -11,31 +43,10 @@ from pathlib import Path
 import pandas as pd
 from random import shuffle, randint, choice
 import time 
-import re 
 from collections import OrderedDict
 from urllib.parse import quote_plus, unquote_plus
 import httpx
-import os
 #python -m uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
-
-#--- Scryfall commander suggest config ---
-SCRYFALL_BASE = "https://api.scryfall.com"
-SUGGEST_MIN_CHARS = 3          # 2 oder 3 – du wolltest 2–3; Default: 3
-SUGGEST_LIMIT = 15             # Smartphone-freundlich
-SCRYFALL_TIMEOUT = 2.0         # Sekunden
-
-CACHE_TTL_SECONDS = 24 * 3600
-CACHE_MAX_ENTRIES = 1000
-
-# Default Background: Snow Basics aus Secret Lair Drop (dein Query)
-DEFAULT_BG_QUERY = 't:basic t:snow e:SLD'
-DEFAULT_BG_ZOOM = 1.12   # <- “Rand weg gecropped” zusätzlich per Zoom (einstellbar)
-COMMANDER_BG_ZOOM = 1.00 # <- kein zusätzlicher Zoom
-
-SCRYFALL_HEADERS = {
-    "Accept": "application/json",
-    "User-Agent": "CommanderRaffle/1.0 (contact: you@example.com)",
-}
 
 _suggest_cache = OrderedDict()  # key -> (timestamp, result_list)
 
@@ -62,25 +73,12 @@ def _cache_set(key: str, value):
         _suggest_cache.popitem(last=False)
 
 def _get_image_url(card: dict, key: str) -> str | None:
-    # key: "art_crop", "border_crop", "large", ...
-    iu = card.get("image_uris")
-    if isinstance(iu, dict) and iu.get(key):
-        return iu[key]
-
-    faces = card.get("card_faces")
-    if isinstance(faces, list) and len(faces) > 0:
-        fu = faces[0].get("image_uris")
-        if isinstance(fu, dict) and fu.get(key):
-            return fu[key]
-
-    return None
+    return get_image_url(card, key)
 
 
 # JSON-Datei
-FILE_PATH = Path("raffle.json")
-
-PAIRINGS_PATH = Path("pairings.json")
-MAX_ROUNDS = 7
+FILE_PATH = RAFFLE_FILE_PATH
+PAIRINGS_PATH = PAIRINGS_FILE_PATH
 
 # Serialisiert alle Zugriffe auf raffle.json innerhalb dieses Prozesses
 RAFFLE_LOCK = asyncio.Lock()
@@ -91,22 +89,10 @@ def _atomic_write_json(path: Path, data) -> None:
     - erst in temp-Datei schreiben
     - dann os.replace (atomarer rename) auf Ziel
     """
-    tmp_path = path.with_suffix(path.suffix + ".tmp")
-    with tmp_path.open("w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=4)
-    os.replace(tmp_path, path)
+    atomic_write_json(path, data)
 
 # FastAPI-App erstellen
-app = FastAPI()
-app.mount("/static", StaticFiles(directory="frontend"), name="static")
-
-# Optional: lokale Assets (z.B. assets/backgrounds/*.png)
-_assets_dir = Path("assets")
-if _assets_dir.exists() and _assets_dir.is_dir():
-    app.mount("/assets", StaticFiles(directory="assets"), name="assets")
-
-# Templates für HTML-Seiten
-templates = Jinja2Templates(directory="frontend")
+app, templates = create_app()
 
 # =========================================================
 # WebSocket live updates (no polling)
@@ -169,32 +155,14 @@ _last_global_sig: str | None = None
 _last_deck_sig: dict[int, str] = {}
 
 def _load_raffle_list() -> list[dict]:
-    if not FILE_PATH.exists():
-        return []
-    try:
-        with FILE_PATH.open("r", encoding="utf-8") as f:
-            content = json.load(f)
-            if isinstance(content, list):
-                return content
-            if isinstance(content, dict):
-                return [content]
-    except (json.JSONDecodeError, ValueError):
-        pass
-    return []
+    return load_raffle_list(FILE_PATH)
 
 def _load_pairings() -> dict | None:
-    if not PAIRINGS_PATH.exists():
-        return None
-    try:
-        with PAIRINGS_PATH.open("r", encoding="utf-8") as f:
-            data = json.load(f)
-            return data if isinstance(data, dict) else None
-    except Exception:
-        return None
+    return load_pairings(PAIRINGS_PATH)
 
 
 def _atomic_write_pairings(data: dict) -> None:
-    _atomic_write_json(PAIRINGS_PATH, data)
+    write_pairings(PAIRINGS_PATH, data)
 
 
 def _all_received_confirmed(raffle_list: list[dict]) -> bool:
@@ -594,7 +562,7 @@ async def notify_state_change():
     """
     global _last_global_sig, _last_deck_sig
 
-    start_file_exists = Path("start.txt").exists()
+    start_file_exists = START_FILE_PATH.exists()
     raffle_list = _load_raffle_list()
 
     # global (CCP + home)
@@ -635,13 +603,13 @@ async def get_form(
     """
     # Prüfen, ob teilnehmer.txt existiert und Namen laden
     participants = []
-    participants_file = Path("teilnehmer.txt")
+    participants_file = PARTICIPANTS_FILE_PATH
     if participants_file.exists():
         with participants_file.open("r", encoding="utf-8") as f:
             participants = [line.strip() for line in f.readlines() if line.strip()]  # Entferne leere Zeilen
 
     # Status von start.txt prüfen
-    start_file_exists = Path("start.txt").exists()
+    start_file_exists = START_FILE_PATH.exists()
 
         # Prüfen, ob raffle.json existiert und die deck_id enthalten ist
     existing_entry = None
@@ -712,18 +680,7 @@ async def get_form(
     )
 
 async def _scryfall_get_card_by_id(card_id: str) -> dict | None:
-    card_id = (card_id or "").strip()
-    if not card_id:
-        return None
-    url = f"{SCRYFALL_BASE}/cards/{quote_plus(card_id)}"
-    try:
-        async with httpx.AsyncClient(timeout=SCRYFALL_TIMEOUT, headers=SCRYFALL_HEADERS) as client:
-            r = await client.get(url)
-            if r.status_code != 200:
-                return None
-            return r.json()
-    except Exception:
-        return None
+    return await get_card_by_id(card_id)
 
 async def _scryfall_random_commander(exclude_card_ids: set[str] | None = None, max_tries: int = 25) -> dict | None:
     """
@@ -732,75 +689,26 @@ async def _scryfall_random_commander(exclude_card_ids: set[str] | None = None, m
 
     exclude_card_ids: avoids duplicates by Scryfall card id
     """
-    exclude_card_ids = exclude_card_ids or set()
-
-    # Avoid Backgrounds (they are not valid "single commander" in your UI logic anyway)
-    # Keep it simple: random commander-legal card, paper, not background
-    scry_q = "game:paper is:commander -t:background"
-    url = f"{SCRYFALL_BASE}/cards/random?q={quote_plus(scry_q)}"
-
-    try:
-        async with httpx.AsyncClient(timeout=SCRYFALL_TIMEOUT, headers=SCRYFALL_HEADERS) as client:
-            for _ in range(max_tries):
-                r = await client.get(url)
-                if r.status_code != 200:
-                    continue
-                card = r.json()
-                cid = (card.get("id") or "").strip()
-                name = (card.get("name") or "").strip()
-                if not cid or not name:
-                    continue
-                if cid in exclude_card_ids:
-                    continue
-                return card
-    except Exception:
-        return None
-
-    return None
-
-def _t(card: dict) -> str:
-    return (card.get("type_line") or "").lower()
-
-
-def _o(card: dict) -> str:
-    # oracle_text can be empty for some layouts; that's fine for our checks
-    return (card.get("oracle_text") or "").lower()
-
+    return await random_commander(exclude_card_ids=exclude_card_ids, max_tries=max_tries)
 
 def _is_background(card: dict) -> bool:
-    return "background" in _t(card)
+    return is_background(card)
 
 
 def _has_choose_a_background(card: dict) -> bool:
-    return "choose a background" in _o(card)
+    return has_choose_a_background(card)
 
 
 def _has_friends_forever(card: dict) -> bool:
-    return "friends forever" in _o(card)
+    return has_friends_forever(card)
 
 
 def _partner_with_target_name(card: dict) -> str | None:
-    # canonical oracle text: "Partner with <Name>"
-    m = re.search(r"partner with ([^\n\(]+)", card.get("oracle_text") or "", flags=re.IGNORECASE)
-    return m.group(1).strip() if m else None
+    return partner_with_target_name(card)
 
 
 async def _scryfall_is_partner_exact_name(name: str) -> bool:
-    name = (name or "").strip()
-    if not name:
-        return False
-    scry_q = f'!"{name}" is:partner'
-    url = f"{SCRYFALL_BASE}/cards/search?q={quote_plus(scry_q)}&unique=cards"
-    try:
-        async with httpx.AsyncClient(timeout=SCRYFALL_TIMEOUT, headers=SCRYFALL_HEADERS) as client:
-            r = await client.get(url)
-            if r.status_code != 200:
-                return False
-            payload = r.json()
-            total = int(payload.get("total_cards") or 0)
-            return total > 0
-    except Exception:
-        return False
+    return await is_partner_exact_name(name)
 
 
 async def _validate_commander_combo(c1: dict, c2: dict | None) -> str | None:
@@ -1023,8 +931,8 @@ async def clear_data():
         if FILE_PATH.exists():
             FILE_PATH.unlink()
         # Löschen von start.txt, falls sie existiert
-        if Path("start.txt").exists():
-            Path("start.txt").unlink()
+        if START_FILE_PATH.exists():
+            START_FILE_PATH.unlink()
         # Löschen von pairings.json, falls sie existiert
         if PAIRINGS_PATH.exists():
             PAIRINGS_PATH.unlink()
@@ -1099,7 +1007,7 @@ def _debug_start_raffle_in_memory(raffle_list: list[dict]) -> dict:
     Assumes RAFFLE_LOCK is held by caller.
     """
     # create start.txt
-    start_file = Path("start.txt")
+    start_file = START_FILE_PATH
     with start_file.open("w", encoding="utf-8") as f:
         f.write("")  # empty file
 
@@ -1128,7 +1036,7 @@ def _debug_start_pairings_in_memory(raffle_list: list[dict]) -> dict:
     Equivalent of /startPairings, but chooses num_pods automatically.
     Assumes RAFFLE_LOCK is held by caller.
     """
-    if not Path("start.txt").exists():
+    if not START_FILE_PATH.exists():
         raise HTTPException(status_code=400, detail="Raffle noch nicht gestartet.")
     if not _all_received_confirmed(raffle_list):
         raise HTTPException(status_code=400, detail="Nicht alle Decks wurden bestätigt.")
@@ -1248,7 +1156,7 @@ async def _debug_apply_step() -> dict:
     Executes exactly one reasonable next step depending on current event state.
     Returns a result dict for JSON/HTML output.
     """
-    start_file_exists = Path("start.txt").exists()
+    start_file_exists = START_FILE_PATH.exists()
 
     async with RAFFLE_LOCK:
         raffle_list = _load_raffle_list()
@@ -1259,7 +1167,7 @@ async def _debug_apply_step() -> dict:
         # Phase 1: Registration
         # -------------------------
         if phase == "registration_needed":
-            participants_file = Path("teilnehmer.txt")
+            participants_file = PARTICIPANTS_FILE_PATH
             if not participants_file.exists():
                 raise HTTPException(status_code=400, detail="teilnehmer.txt nicht gefunden.")
 
@@ -1444,7 +1352,7 @@ async def customer_control_panel(request: Request):
     """
     Zeigt die Customer Control Panel Seite an, überprüft den Status von start.txt und raffle.json.
     """
-    start_file_exists = Path("start.txt").exists()
+    start_file_exists = START_FILE_PATH.exists()
 
     deck_count = -1
 
@@ -1538,7 +1446,7 @@ async def start_raffle():
     """
     try:
          # Leere start.txt erstellen
-        start_file = Path("start.txt")
+        start_file = START_FILE_PATH
         with start_file.open("w", encoding="utf-8") as f:
             f.write("")  # Leere Datei erstellen
         # Aktionen für den Raffle-Start (optional: hier Platz für Logik)
@@ -1756,95 +1664,14 @@ async def commander_partner_capable(name: str = ""):
     Returns {"partner_capable": bool}
     Checks via Scryfall search: !"<exact name>" is:partner
     """
-    name = (name or "").strip()
-    if not name:
-        return JSONResponse({"partner_capable": False})
-
-    # exact name match + is:partner
-    # Scryfall exact-name search uses !"Card Name"
-    scry_q = f'!"{name}" is:partner'
-    url = f"{SCRYFALL_BASE}/cards/search?q={quote_plus(scry_q)}&unique=cards"
-
-    try:
-        async with httpx.AsyncClient(timeout=SCRYFALL_TIMEOUT, headers=SCRYFALL_HEADERS) as client:
-            r = await client.get(url)
-            if r.status_code != 200:
-                return JSONResponse({"partner_capable": False})
-
-            payload = r.json()
-            total = payload.get("total_cards") or 0
-            return JSONResponse({"partner_capable": bool(total)})
-
-    except Exception:
-        return JSONResponse({"partner_capable": False})
+    return JSONResponse({"partner_capable": await _scryfall_is_partner_exact_name(name)})
 
 async def _scryfall_named_exact(name: str) -> dict | None:
     """
     Resolve a card by exact name via Scryfall.
     Returns card JSON or None.
     """
-    name = (name or "").strip()
-    if not name:
-        return None
-
-    url = f"{SCRYFALL_BASE}/cards/named?exact={quote_plus(name)}"
-    try:
-        async with httpx.AsyncClient(timeout=SCRYFALL_TIMEOUT, headers=SCRYFALL_HEADERS) as client:
-            r = await client.get(url)
-            if r.status_code != 200:
-                return None
-            return r.json()
-    except Exception:
-        return None
-
-
-def _type_line(card: dict) -> str:
-    return (card.get("type_line") or "").lower()
-
-
-def _oracle_text(card: dict) -> str:
-    return (card.get("oracle_text") or "").lower()
-
-
-def _is_background(card: dict) -> bool:
-    # Background is a subtype; appears in type_line like "Enchantment — Background"
-    return "background" in _type_line(card)
-
-
-def _has_choose_a_background(card: dict) -> bool:
-    return "choose a background" in _oracle_text(card)
-
-
-def _has_friends_forever(card: dict) -> bool:
-    return "friends forever" in _oracle_text(card)
-
-
-def _partner_with_target_name(card: dict) -> str | None:
-    # canonical oracle text: "Partner with <Name>"
-    m = re.search(r"partner with ([^\n\(]+)", card.get("oracle_text") or "", flags=re.IGNORECASE)
-    return m.group(1).strip() if m else None
-
-
-async def _scryfall_is_partner_exact_name(name: str) -> bool:
-    """
-    True if Scryfall search finds exact name and is:partner.
-    """
-    name = (name or "").strip()
-    if not name:
-        return False
-
-    scry_q = f'!"{name}" is:partner'
-    url = f"{SCRYFALL_BASE}/cards/search?q={quote_plus(scry_q)}&unique=cards"
-    try:
-        async with httpx.AsyncClient(timeout=SCRYFALL_TIMEOUT, headers=SCRYFALL_HEADERS) as client:
-            r = await client.get(url)
-            if r.status_code != 200:
-                return False
-            payload = r.json()
-            total = int(payload.get("total_cards") or 0)
-            return total > 0
-    except Exception:
-        return False
+    return await named_exact(name)
 
 @app.get("/api/background/default")
 async def background_default():
@@ -1978,7 +1805,7 @@ async def ws_endpoint(websocket: WebSocket):
 
     # send initial signature (baseline)
     try:
-        start_file_exists = Path("start.txt").exists()
+        start_file_exists = START_FILE_PATH.exists()
         raffle_list = _load_raffle_list()
 
         if group in ("ccp", "home"):
@@ -2006,7 +1833,7 @@ async def start_pairings(num_pods: int = Form(...), hosts: list[str] = Form(defa
     async with RAFFLE_LOCK:
         raffle_list = _load_raffle_list()
 
-        if not Path("start.txt").exists():
+        if not START_FILE_PATH.exists():
             raise HTTPException(status_code=400, detail="Raffle noch nicht gestartet.")
 
         if not _all_received_confirmed(raffle_list):
