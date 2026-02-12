@@ -718,3 +718,70 @@ body.ccp-page{
 body.ccp-page .ccp-card{
   max-height: none;
 }
+
+.round-report-row{
+  display:flex;
+  gap:10px;
+  justify-content:space-between;
+  align-items:center;
+}
+
+.report-modal{
+  width:min(860px, calc(100vw - 28px));
+}
+
+.report-layout{
+  display:grid;
+  grid-template-columns: 1fr 1fr;
+  gap:12px;
+}
+
+.report-box{
+  border:1px solid rgba(255,255,255,0.2);
+  border-radius:12px;
+  padding:10px;
+  min-height:280px;
+  background: rgba(0,0,0,0.2);
+}
+
+.report-player-chip{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin:6px 0;
+  padding:8px;
+  border-radius:10px;
+  border:1px solid rgba(255,255,255,0.2);
+  background: rgba(255,255,255,0.08);
+  cursor:grab;
+}
+
+.report-player-avatar{
+  width:24px;
+  height:24px;
+  border-radius:50%;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:12px;
+  font-weight:700;
+  background: rgba(90,140,255,0.45);
+}
+
+.report-place-slot + .report-place-slot{ margin-top: 8px; }
+.report-place-title{ font-weight:700; margin-bottom:4px; }
+.report-dropzone{
+  min-height:46px;
+  border:1px dashed rgba(255,255,255,0.32);
+  border-radius:10px;
+  padding:4px;
+}
+.report-dropzone.is-over,
+#reportPlayersPool.is-over{
+  border-color: rgba(140,255,170,0.95);
+  background: rgba(140,255,170,0.12);
+}
+
+@media (max-width: 760px){
+  .report-layout{ grid-template-columns: 1fr; }
+}

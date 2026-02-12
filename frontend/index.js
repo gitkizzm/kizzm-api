@@ -33,6 +33,17 @@ async function ensureCardPreviewLoaded(){
   const rootCard = document.querySelector(".glass-card");
   const currentDeckId = Number(rootCard?.dataset?.deckId || "0") || 0;
 
+  const reportModal = document.getElementById("reportModal");
+  const openReportModalBtn = document.getElementById("openReportModal");
+  const cancelReportBtn = document.getElementById("cancelReport");
+  const submitReportBtn = document.getElementById("submitReport");
+  const reportTitleEl = document.getElementById("reportModalTitle");
+  const reportPlayersPoolEl = document.getElementById("reportPlayersPool");
+  const reportPlacesEl = document.getElementById("reportPlaces");
+  const reportModalErrorEl = document.getElementById("reportModalError");
+
+  let reportState = null;
+
   const commander1Input = document.getElementById("commander");
   const commander1Box = document.getElementById("commanderSuggestBox");
   const commander1Spinner = document.getElementById("commanderSpinner");
@@ -297,6 +308,167 @@ async function ensureCardPreviewLoaded(){
   }
 
   // --- WebSocket live reload ("/" + "/?deck_id=...") ---
+
+  function setReportError(msg){
+    if(!reportModalErrorEl) return;
+    const message = (msg || "").trim();
+    reportModalErrorEl.textContent = message;
+    reportModalErrorEl.style.display = message ? "block" : "none";
+  }
+
+  function reportAvatarLabel(name){
+    const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
+    if(parts.length === 0) return "?";
+    if(parts.length === 1) return parts[0][0].toUpperCase();
+    return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  }
+
+  function renderReportPlayer(name){
+    return `<div class="report-player-chip" draggable="true" data-player="${escapeHtml(name)}">
+      <div class="report-player-avatar">${escapeHtml(reportAvatarLabel(name))}</div>
+      <div>${escapeHtml(name)}</div>
+    </div>`;
+  }
+
+  function reportCollectPlacements(){
+    const result = { "1": [], "2": [], "3": [], "4": [] };
+    for(const place of ["1","2","3","4"]){
+      const zone = reportPlacesEl?.querySelector(`.report-dropzone[data-place="${place}"]`);
+      if(!zone) continue;
+      const chips = Array.from(zone.querySelectorAll('.report-player-chip'));
+      result[place] = chips.map((el) => el.dataset.player).filter(Boolean);
+    }
+    return result;
+  }
+
+  function reportRender(){
+    if(!reportState || !reportPlayersPoolEl || !reportPlacesEl) return;
+    reportPlayersPoolEl.innerHTML = "";
+    const poolPlayers = reportState.players.filter((p) => !reportState.placements.some((pl) => pl.player === p));
+    reportPlayersPoolEl.innerHTML = poolPlayers.map(renderReportPlayer).join("");
+
+    for(const place of ["1","2","3","4"]){
+      const zone = reportPlacesEl.querySelector(`.report-dropzone[data-place="${place}"]`);
+      if(!zone) continue;
+      const placed = reportState.placements.filter((pl) => pl.place === place).map((pl) => pl.player);
+      zone.innerHTML = placed.map(renderReportPlayer).join("");
+    }
+    reportBindDraggable();
+  }
+
+  function reportBindDraggable(){
+    const chips = Array.from(document.querySelectorAll('.report-player-chip[draggable="true"]'));
+    chips.forEach((chip) => {
+      chip.addEventListener('dragstart', (ev) => {
+        const player = chip.dataset.player;
+        if(!player) return;
+        ev.dataTransfer?.setData('text/plain', player);
+      });
+    });
+
+    const zones = [reportPlayersPoolEl, ...Array.from(document.querySelectorAll('.report-dropzone'))].filter(Boolean);
+    zones.forEach((zone) => {
+      zone.addEventListener('dragover', (ev) => {
+        ev.preventDefault();
+        zone.classList.add('is-over');
+      });
+      zone.addEventListener('dragleave', () => zone.classList.remove('is-over'));
+      zone.addEventListener('drop', (ev) => {
+        ev.preventDefault();
+        zone.classList.remove('is-over');
+        const player = ev.dataTransfer?.getData('text/plain');
+        if(!player || !reportState) return;
+        reportState.placements = reportState.placements.filter((pl) => pl.player !== player);
+        const place = zone.dataset.place;
+        if(place){
+          reportState.placements.push({ player, place });
+        }
+        reportRender();
+      });
+    });
+  }
+
+  function closeReportModal(){
+    if(!reportModal) return;
+    reportModal.classList.remove('show');
+    reportModal.setAttribute('aria-hidden', 'true');
+    openReportModalBtn?.focus();
+  }
+
+  async function loadReportData(){
+    const r = await fetch(`/api/round-report/current?deck_id=${encodeURIComponent(currentDeckId)}`, { cache:'no-store' });
+    const data = await r.json();
+    if(!r.ok) throw new Error(data?.detail || 'Rundenreport konnte nicht geladen werden.');
+
+    reportState = {
+      round: data.round,
+      table: data.table,
+      players: data.players || [],
+      hasReport: !!data.has_report,
+      placements: [],
+    };
+
+    if(data.report?.raw_placements){
+      for(const place of ["1","2","3","4"]){
+        for(const player of (data.report.raw_placements[place] || [])){
+          reportState.placements.push({ player, place });
+        }
+      }
+    }
+
+    if(reportTitleEl){
+      reportTitleEl.textContent = `Ergebnis melden, Runde ${reportState.round}, Tisch ${reportState.table}`;
+    }
+
+    reportRender();
+    setReportError(reportState.hasReport ? 'Für diesen Tisch wurde bereits ein Ergebnis gemeldet.' : '');
+    if(submitReportBtn) submitReportBtn.disabled = reportState.hasReport;
+  }
+
+  function initReportModal(){
+    if(!reportModal || !openReportModalBtn) return;
+
+    openReportModalBtn.addEventListener('click', async () => {
+      try{
+        await loadReportData();
+        reportModal.classList.add('show');
+        reportModal.setAttribute('aria-hidden', 'false');
+      }catch(err){
+        alert(err?.message || 'Rundenreport konnte nicht geladen werden.');
+      }
+    });
+
+    cancelReportBtn?.addEventListener('click', closeReportModal);
+
+    reportModal.addEventListener('click', (ev) => {
+      if(ev.target === reportModal) closeReportModal();
+    });
+
+    submitReportBtn?.addEventListener('click', async () => {
+      if(!reportState) return;
+      const placements = reportCollectPlacements();
+      const assignedCount = Object.values(placements).flat().length;
+      if(assignedCount !== reportState.players.length){
+        setReportError('Bitte alle Spieler auf eine Platzierung ziehen.');
+        return;
+      }
+
+      try{
+        const r = await fetch('/api/round-report/submit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ deck_id: currentDeckId, placements }),
+        });
+        const data = await r.json();
+        if(!r.ok) throw new Error(data?.detail || 'Speichern fehlgeschlagen.');
+        closeReportModal();
+        location.reload();
+      }catch(err){
+        setReportError(err?.message || 'Speichern fehlgeschlagen.');
+      }
+    });
+  }
+
   function wsUrl(params){
     const proto = (location.protocol === "https:") ? "wss" : "ws";
     return `${proto}://${location.host}/ws?${params}`;
@@ -419,6 +591,8 @@ async function ensureCardPreviewLoaded(){
 
     setCommander2LiveError("");
     updateSubmitEnabled();
+
+    initReportModal();
 
     // start WS
     connectWS();

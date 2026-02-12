@@ -68,6 +68,7 @@ from backend.config import (
 import json
 import asyncio
 from pathlib import Path
+from datetime import datetime, timezone
 import pandas as pd
 from random import shuffle, randint, choice
 import time 
@@ -175,6 +176,37 @@ def _build_rounds(players: list[str], num_pods: int, max_rounds: int = MAX_ROUND
 
 def _apply_round_to_raffle(raffle_list: list[dict], state: dict, round_no: int):
     apply_round_to_raffle(raffle_list, state, round_no)
+
+
+def _resolve_round_places(raw_places: dict[str, list[str]]) -> dict[str, int]:
+    """
+    Normalisiert Platzierungen mit Gleichständen.
+
+    Beispiel (4 Spieler):
+      Platz 4: [A]
+      Platz 3: [B, C]
+      -> Platz 2 wird übersprungen
+      -> verbleibender Spieler kann nur noch Platz 1 sein
+    """
+    resolved: dict[str, int] = {}
+    occupied = set()
+    for place in sorted(raw_places.keys(), key=lambda x: int(x), reverse=True):
+        players = [p for p in (raw_places.get(place) or []) if p]
+        if not players:
+            continue
+        p = int(place)
+        for player in players:
+            if player in occupied:
+                continue
+            resolved[player] = p
+            occupied.add(player)
+    return resolved
+
+
+def _pairings_reports_bucket(state: dict, round_no: int) -> dict:
+    reports = state.setdefault("round_reports", {})
+    round_key = str(round_no)
+    return reports.setdefault(round_key, {})
 
 def _global_signature(start_file_exists: bool, raffle_list: list[dict]) -> str:
     return global_signature(start_file_exists, raffle_list, pairings_loader=_load_pairings)
@@ -980,6 +1012,19 @@ async def customer_control_panel(request: Request):
     players = _deckowners(raffle_list) if start_file_exists else []
     selected_hosts = (pair.get("hosts") or []) if isinstance(pair, dict) else []
 
+    round_tables = []
+    if pairings_phase == "playing" and active_round > 0:
+        rounds = pair.get("rounds") or []
+        if len(rounds) >= active_round:
+            active_tables = rounds[active_round - 1] or []
+            reports = ((pair.get("round_reports") or {}).get(str(active_round), {}))
+            for idx, table_players in enumerate(active_tables, start=1):
+                round_tables.append({
+                    "table": idx,
+                    "players": table_players,
+                    "has_report": bool(reports.get(str(idx))),
+                })
+
     if FILE_PATH.exists():
         try:
             with FILE_PATH.open("r", encoding="utf-8") as f:
@@ -1041,6 +1086,7 @@ async def customer_control_panel(request: Request):
             "active_round": active_round,
             "players": players,
             "selected_hosts": selected_hosts,
+            "round_tables": round_tables,
             "default_num_pods": settings.default_num_pods,
             "min_decks_to_start": settings.min_decks_to_start,
         }
@@ -1409,6 +1455,126 @@ async def background_commander(name: str = ""):
 
     except Exception:
         return JSONResponse({"url": None, "zoom": _current_settings().ui.commander_bg_zoom})
+
+
+@app.get("/api/round-report/current")
+async def current_round_report(deck_id: int):
+    raffle_list = _load_raffle_list()
+    state = _load_pairings() or {}
+
+    if not state or (state.get("phase") or "") != "playing":
+        raise HTTPException(status_code=400, detail="Aktuell keine aktive Spielrunde.")
+
+    active_round = int(state.get("active_round") or 0)
+    if active_round <= 0:
+        raise HTTPException(status_code=400, detail="Keine aktive Runde gefunden.")
+
+    entry = next((e for e in raffle_list if e.get("deck_id") == deck_id), None)
+    if not entry:
+        raise HTTPException(status_code=404, detail="Deck nicht gefunden.")
+
+    table = int(entry.get("pairing_table") or 0)
+    players = entry.get("pairing_players") or []
+    if table <= 0 or not players:
+        raise HTTPException(status_code=400, detail="Deck hat in der aktiven Runde keinen Tisch.")
+
+    reports_for_round = (state.get("round_reports") or {}).get(str(active_round), {})
+    existing = reports_for_round.get(str(table))
+
+    return {
+        "round": active_round,
+        "table": table,
+        "players": players,
+        "has_report": bool(existing),
+        "report": existing,
+    }
+
+
+@app.post("/api/round-report/submit")
+async def submit_round_report(payload: dict = Body(...)):
+    deck_id = int(payload.get("deck_id") or 0)
+    raw_places = payload.get("placements") or {}
+
+    if deck_id <= 0:
+        raise HTTPException(status_code=400, detail="deck_id fehlt.")
+    if not isinstance(raw_places, dict):
+        raise HTTPException(status_code=400, detail="placements muss ein Objekt sein.")
+
+    async with RAFFLE_LOCK:
+        raffle_list = _load_raffle_list()
+        state = _load_pairings() or {}
+        if not state or (state.get("phase") or "") != "playing":
+            raise HTTPException(status_code=400, detail="Aktuell keine aktive Spielrunde.")
+
+        active_round = int(state.get("active_round") or 0)
+        entry = next((e for e in raffle_list if e.get("deck_id") == deck_id), None)
+        if not entry:
+            raise HTTPException(status_code=404, detail="Deck nicht gefunden.")
+
+        table = int(entry.get("pairing_table") or 0)
+        players = [p for p in (entry.get("pairing_players") or []) if p]
+        if table <= 0 or not players:
+            raise HTTPException(status_code=400, detail="Deck hat in der aktiven Runde keinen Tisch.")
+
+        reports_for_round = _pairings_reports_bucket(state, active_round)
+        table_key = str(table)
+        if reports_for_round.get(table_key):
+            raise HTTPException(status_code=409, detail="Für diesen Tisch wurde bereits ein Ergebnis gemeldet.")
+
+        normalized_raw: dict[str, list[str]] = {}
+        seen = set()
+        for place in ["1", "2", "3", "4"]:
+            group = raw_places.get(place) or []
+            if not isinstance(group, list):
+                continue
+            cleaned = []
+            for player in group:
+                if player in seen:
+                    continue
+                if player not in players:
+                    continue
+                seen.add(player)
+                cleaned.append(player)
+            normalized_raw[place] = cleaned
+
+        if len(seen) != len(players):
+            raise HTTPException(status_code=400, detail="Bitte alle Spieler platzieren.")
+
+        resolved_places = _resolve_round_places(normalized_raw)
+        reports_for_round[table_key] = {
+            "round": active_round,
+            "table": table,
+            "players": players,
+            "raw_placements": normalized_raw,
+            "resolved_places": resolved_places,
+            "reported_by": entry.get("deckOwner") or "",
+            "submitted_at": datetime.now(timezone.utc).isoformat(),
+        }
+        _atomic_write_pairings(state)
+
+    await notify_state_change()
+    return {"ok": True}
+
+
+@app.post("/resetRoundReport")
+async def reset_round_report(round_no: int = Form(...), table_no: int = Form(...)):
+    async with RAFFLE_LOCK:
+        state = _load_pairings()
+        if not state:
+            raise HTTPException(status_code=400, detail="Pairings wurden noch nicht gestartet.")
+
+        reports = state.get("round_reports") or {}
+        round_reports = reports.get(str(round_no)) or {}
+        round_reports.pop(str(table_no), None)
+        if round_reports:
+            reports[str(round_no)] = round_reports
+        else:
+            reports.pop(str(round_no), None)
+        state["round_reports"] = reports
+        _atomic_write_pairings(state)
+
+    await notify_state_change()
+    return RedirectResponse(url="/CCP", status_code=303)
 
 register_ws_routes(
     app,
