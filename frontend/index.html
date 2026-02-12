@@ -7,7 +7,9 @@
     <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
+    {% set show_card_preview = not (existing_entry and (existing_entry.pairing_round or existing_entry.pairing_phase == "voting")) %}
     <!-- 3D Card Preview (überlappt die glass-card leicht am oberen Rand) -->
+    {% if show_card_preview %}
         <div id="cardPreview"
                 class="card-preview is-single"
                 aria-hidden="true"
@@ -24,8 +26,9 @@
                 <div class="card3d-face back"></div>
             </div>
         </div>
+    {% endif %}
         
-    <div class="glass-card has-card-preview" data-deck-id="{{ deck_id }}">
+    <div class="glass-card{% if show_card_preview %} has-card-preview{% endif %}" data-deck-id="{{ deck_id }}">
 
         <h1>{{ glasscard_title or "Deckregistrierung" }}</h1>
 
