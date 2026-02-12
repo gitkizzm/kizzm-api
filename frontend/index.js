@@ -383,6 +383,31 @@ async function ensureCardPreviewLoaded(){
       return pushDownWithCascade(state, place + 1, tieGroup);
     }
 
+    function pushUpWithCascade(state, place, incoming){
+      if(place < 1) return false;
+      const key = String(place);
+      const prev = state[key] || [];
+      state[key] = [...incoming];
+      if(prev.length === 0) return true;
+      return pushUpWithCascade(state, place - 1, prev);
+    }
+
+    function tryFreeHigherSlotsByLifting(state, place, neededFreeHigher){
+      // Freie Slots direkt über dem Gleichstand schaffen, indem blockierende Gruppen
+      // nach oben geschoben werden (z.B. 3 -> 2), falls unten kein Platz mehr ist.
+      for(let step = 1; step <= neededFreeHigher; step++){
+        const target = place - step;
+        const targetKey = String(target);
+        const blocked = state[targetKey] || [];
+        if(blocked.length === 0) continue;
+
+        state[targetKey] = [];
+        const ok = pushUpWithCascade(state, target - 1, blocked);
+        if(!ok) return false;
+      }
+      return true;
+    }
+
     let changed = true;
     while(changed){
       changed = false;
@@ -421,6 +446,23 @@ async function ensureCardPreviewLoaded(){
         const ok = shiftTieGroupDown(buckets, p);
 
         if(!ok){
+          // Sonderfall-Bugfix:
+          // Wenn ein Gleichstand auf Platz 4 nicht weiter nach unten verschoben werden kann,
+          // versuchen wir zuerst die blockierenden höheren Plätze nach oben zu schieben.
+          // Beispiel: [4: A], [3: B], A -> 4 (tie) => B wird nach 2 geschoben.
+          if(p === 4){
+            const lifted = cloneBuckets(snapshot);
+            const liftedOk = tryFreeHigherSlotsByLifting(lifted, p, neededFreeHigher);
+            if(liftedOk){
+              buckets["1"] = lifted["1"];
+              buckets["2"] = lifted["2"];
+              buckets["3"] = lifted["3"];
+              buckets["4"] = lifted["4"];
+              changed = true;
+              continue;
+            }
+          }
+
           // Sonderfall laut Anforderung:
           // Wenn die Umverteilung durch den neu gesetzten Spieler ausgelöst wurde
           // und nach unten kein Platz mehr frei ist, rutscht dieser auf Platz 1.
