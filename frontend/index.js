@@ -350,6 +350,49 @@ async function ensureCardPreviewLoaded(){
     return result;
   }
 
+  function normalizePlacementsByRules(placements){
+    const buckets = {
+      "1": [...(placements["1"] || [])],
+      "2": [...(placements["2"] || [])],
+      "3": [...(placements["3"] || [])],
+      "4": [...(placements["4"] || [])],
+    };
+
+    let changed = true;
+    while(changed){
+      changed = false;
+      for(let p = 4; p >= 2; p--){
+        const place = String(p);
+        const blocked = String(p - 1);
+        const shifted = String(Math.max(1, p - 2));
+
+        if(p > 2 && (buckets[place] || []).length > 1 && (buckets[blocked] || []).length > 0){
+          buckets[shifted].push(...buckets[blocked]);
+          buckets[blocked] = [];
+          changed = true;
+        }
+      }
+    }
+
+    return buckets;
+  }
+
+  function applyNormalizedPlacementsToState(){
+    if(!reportState) return;
+    const placements = reportCollectPlacements();
+    const assignedCount = Object.values(placements).flat().length;
+    if(assignedCount !== reportState.players.length) return;
+
+    const normalized = normalizePlacementsByRules(placements);
+    reportState.placements = [];
+    for(const place of ["1","2","3","4"]){
+      for(const player of normalized[place] || []){
+        reportState.placements.push({ player, place });
+      }
+    }
+    reportRender();
+  }
+
   function reportRender(){
     if(!reportState || !reportPlayersPoolEl || !reportPlacesEl) return;
     reportPlayersPoolEl.innerHTML = "";
@@ -388,6 +431,7 @@ async function ensureCardPreviewLoaded(){
         reportState.placements.push({ player, place });
       }
       reportRender();
+      applyNormalizedPlacementsToState();
     }
 
     const chips = Array.from(document.querySelectorAll('.report-player-chip[draggable="true"]'));
@@ -504,6 +548,7 @@ async function ensureCardPreviewLoaded(){
 
     submitReportBtn?.addEventListener('click', async () => {
       if(!reportState) return;
+      applyNormalizedPlacementsToState();
       const placements = reportCollectPlacements();
       const assignedCount = Object.values(placements).flat().length;
       if(assignedCount !== reportState.players.length){

@@ -747,17 +747,18 @@ body.ccp-page .ccp-card{
 .report-player-chip{
   display:flex;
   align-items:stretch;
-  gap:6px;
+  gap:4px;
   width:100%;
   margin:1px 0;
-  padding:1px 4px 1px 1px;
-  height:32px;
+  padding:1px 3px 1px 1px;
+  height:30px;
   border-radius:8px;
   border:1px solid rgba(255,255,255,0.2);
   background: rgba(255,255,255,0.08);
   color: var(--text);
   cursor:grab;
-  min-height:32px;
+  min-height:30px;
+  box-sizing: border-box;
   touch-action: none;
   overflow: hidden;
 }
@@ -770,7 +771,7 @@ body.ccp-page .ccp-card{
 .report-player-avatar{
   flex: 0 0 auto;
   height: 100%;
-  width: 40px;
+  width: 34px;
   display:flex;
   align-items:center;
   justify-content:center;
@@ -806,6 +807,7 @@ body.ccp-page .ccp-card{
   text-overflow: ellipsis;
   display:flex;
   align-items:center;
+  font-size: 0.92rem;
 }
 
 .report-place-slot + .report-place-slot{ margin-top: 8px; }
@@ -815,7 +817,7 @@ body.ccp-page .ccp-card{
   min-height:44px;
   border:1px dashed rgba(255,255,255,0.32);
   border-radius:10px;
-  padding:16px 1px 1px;
+  padding:14px 0 0;
 }
 
 .report-dropzone::before{
@@ -832,6 +834,7 @@ body.ccp-page .ccp-card{
 .report-dropzone .report-player-chip{
   position:relative;
   z-index:1;
+  margin:0;
 }
 
 .report-dropzone.is-over,
