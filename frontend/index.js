@@ -339,6 +339,37 @@ async function ensureCardPreviewLoaded(){
     </div>`;
   }
 
+  async function hydratePairingMatchupChips(){
+    const chips = Array.from(document.querySelectorAll('.pairing-matchup-grid .report-player-chip--matchup[data-player]'));
+    if(chips.length === 0 || currentDeckId <= 0) return;
+
+    try{
+      const r = await fetch(`/api/round-report/current?deck_id=${encodeURIComponent(currentDeckId)}`, { cache:'no-store' });
+      const data = await r.json();
+      if(!r.ok) return;
+
+      const playerMeta = data?.player_meta || {};
+      chips.forEach((chip) => {
+        const player = String(chip.dataset.player || '').trim();
+        if(!player) return;
+
+        const avatarUrl = playerMeta?.[player]?.avatar_url;
+        const avatarEl = chip.querySelector('.report-player-avatar');
+        const nameEl = chip.querySelector('.report-player-name');
+        if(nameEl) nameEl.textContent = reportDisplayName(player);
+        if(!avatarEl) return;
+
+        if(avatarUrl){
+          avatarEl.innerHTML = `<img src="${escapeHtml(avatarUrl)}" alt="" class="report-player-avatar-img">`;
+        }else{
+          avatarEl.innerHTML = `<span class="report-player-avatar-fallback">${escapeHtml(reportAvatarLabel(player))}</span>`;
+        }
+      });
+    }catch(_){
+      // Fallback bleibt bei servergerenderten Initialen.
+    }
+  }
+
   function reportCollectPlacements(){
     const result = { "1": [], "2": [], "3": [], "4": [] };
     for(const place of ["1","2","3","4"]){
@@ -833,6 +864,7 @@ async function ensureCardPreviewLoaded(){
     updateSubmitEnabled();
 
     initReportModal();
+    hydratePairingMatchupChips();
 
     // start WS
     connectWS();

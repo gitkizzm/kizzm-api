@@ -49,15 +49,36 @@
             <div class="status ok">
                 Hallo {{ deckOwner }}.
             </div>
-            <div class="status" style="margin-top: 12px;">
-                Tisch {{ existing_entry.pairing_table }}
-                <div style="margin-top: 8px;">
-                    <strong>Mitspieler:</strong>
-                    <div style="margin-top: 6px;">
-                        {% for p in existing_entry.pairing_players %}
-                            <div>{{ p }}</div>
-                        {% endfor %}
+            <div class="status pairing-status" style="margin-top: 12px;">
+                <div class="pairing-table-label">Tisch {{ existing_entry.pairing_table }}</div>
+                <div class="pairing-matchup-grid" aria-label="Spieler-Matchup">
+                    {% set players = existing_entry.pairing_players or [] %}
+                    {% set slots = [
+                        {'side': 'left', 'player': players[0] if players|length > 0 else ''},
+                        {'side': 'right', 'player': players[1] if players|length > 1 else ''},
+                        {'side': 'left', 'player': players[2] if players|length > 2 else ''},
+                        {'side': 'right', 'player': players[3] if players|length > 3 else ''}
+                    ] %}
+
+                    {% for slot in slots %}
+                    <div class="pairing-chip-slot {{ slot.side }}">
+                        {% if slot.player %}
+                        {% set content_align = 'right' if slot.side == 'left' else 'left' %}
+                        <div
+                            class="report-player-chip report-player-chip--matchup report-player-chip--content-{{ content_align }} is-static"
+                            data-player="{{ slot.player }}"
+                            title="{{ slot.player }}"
+                            aria-label="{{ slot.player }}">
+                            <div class="report-player-avatar">
+                                <span class="report-player-avatar-fallback">{{ slot.player[:1]|upper }}</span>
+                            </div>
+                            <div class="report-player-name">{{ slot.player }}</div>
+                        </div>
+                        {% endif %}
                     </div>
+                    {% endfor %}
+
+                    <div class="pairing-vs-chip" aria-hidden="true">VS</div>
                 </div>
             </div>
             <div class="btn-row" style="margin-top: 12px;">
