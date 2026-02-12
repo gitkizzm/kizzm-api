@@ -468,7 +468,39 @@ async function ensureCardPreviewLoaded(){
       const placed = reportState.placements.filter((pl) => pl.place === place).map((pl) => pl.player);
       zone.innerHTML = placed.map(renderReportPlayer).join("");
     }
+    updateReportPlaceSlotLayout();
     reportBindDraggable();
+  }
+
+  function updateReportPlaceSlotLayout(){
+    if(!reportPlacesEl) return;
+    const slots = Array.from(reportPlacesEl.querySelectorAll('.report-place-slot'));
+    if(slots.length === 0) return;
+
+    const style = getComputedStyle(reportPlacesEl);
+    const gap = Number.parseFloat(style.rowGap || style.gap || '0') || 0;
+    const containerHeight = reportPlacesEl.clientHeight || 240;
+
+    let occupiedTotal = 0;
+    const emptySlots = [];
+
+    for(const slot of slots){
+      const zone = slot.querySelector('.report-dropzone');
+      const chipCount = zone ? zone.querySelectorAll('.report-player-chip').length : 0;
+      if(chipCount > 0){
+        const needed = 16 + (chipCount * 31);
+        occupiedTotal += needed;
+        slot.style.flex = `0 0 ${needed}px`;
+      }else{
+        emptySlots.push(slot);
+      }
+    }
+
+    const freeSpace = containerHeight - occupiedTotal - (gap * Math.max(0, slots.length - 1));
+    const perEmpty = emptySlots.length > 0 ? Math.max(14, Math.floor(freeSpace / emptySlots.length)) : 0;
+    for(const slot of emptySlots){
+      slot.style.flex = `1 1 ${perEmpty}px`;
+    }
   }
 
   function reportBindDraggable(){

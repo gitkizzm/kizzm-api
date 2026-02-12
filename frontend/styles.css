@@ -744,6 +744,16 @@ body.ccp-page .ccp-card{
   background: rgba(0,0,0,0.2);
 }
 
+.report-places{
+  height:240px;
+  min-height:240px;
+  max-height:240px;
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  overflow:hidden;
+}
+
 .report-player-chip{
   display:flex;
   align-items:stretch;
@@ -810,14 +820,19 @@ body.ccp-page .ccp-card{
   font-size: 0.92rem;
 }
 
-.report-place-slot + .report-place-slot{ margin-top: 8px; }
+.report-place-slot{
+  min-height:0;
+  display:flex;
+}
 
 .report-dropzone{
   position:relative;
-  min-height:44px;
+  min-height:0;
+  height:100%;
   border:1px dashed rgba(255,255,255,0.32);
   border-radius:10px;
   padding:14px 0 0;
+  overflow-y:auto;
 }
 
 .report-dropzone::before{
