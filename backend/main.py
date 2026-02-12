@@ -227,6 +227,12 @@ async def get_form(
 
     # Status von start.txt prüfen
     start_file_exists = START_FILE_PATH.exists()
+    raffle_list = _load_raffle_list()
+    all_confirmed = _all_received_confirmed(raffle_list) if start_file_exists else False
+    pairings = _load_pairings() or {}
+    pairings_phase = (pairings.get("phase") or "").strip().lower()
+    active_round = int(pairings.get("active_round") or 0) if pairings else 0
+    pairings_started = bool(pairings) and active_round > 0
 
         # Prüfen, ob raffle.json existiert und die deck_id enthalten ist
     existing_entry = None
@@ -245,6 +251,22 @@ async def get_form(
         except (json.JSONDecodeError, ValueError):
             pass
 
+    glasscard_title = "Deckregistrierung"
+    if start_file_exists:
+        glasscard_title = "Deckverteilung"
+
+        entry_pairing_phase = (existing_entry.get("pairing_phase") or "").strip().lower() if existing_entry else ""
+        entry_pairing_round = int(existing_entry.get("pairing_round") or 0) if existing_entry else 0
+
+        if pairings_phase == "voting" or entry_pairing_phase == "voting":
+            glasscard_title = "Voting"
+        elif pairings_phase == "playing" and active_round > 0:
+            glasscard_title = f"Spielphase – Runde {active_round}"
+        elif entry_pairing_round > 0:
+            glasscard_title = f"Spielphase – Runde {entry_pairing_round}"
+        elif all_confirmed and not pairings_started:
+            glasscard_title = "Warten auf Pairings"
+
     # 🔴 NEU: Raffle gestartet, aber Deck ID nicht registriert
     if start_file_exists and deck_id != 0 and existing_entry is None:
         return templates.TemplateResponse(
@@ -260,6 +282,7 @@ async def get_form(
                 ),
                 "participants": [],
                 "values": None,
+                "glasscard_title": glasscard_title,
             }
         )
 
@@ -281,6 +304,7 @@ async def get_form(
             "existing_entry": existing_entry,
             "deckOwner": deckOwner,
             "participants": participants,
+            "glasscard_title": glasscard_title,
 
             # NEU: PRG-Fehler + Prefill aus Query-Parametern
             "error": error,
