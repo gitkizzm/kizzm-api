@@ -751,13 +751,15 @@ body.ccp-page .ccp-card{
   width:100%;
   margin:1px 0;
   padding:1px 4px 1px 1px;
+  height:32px;
   border-radius:8px;
   border:1px solid rgba(255,255,255,0.2);
   background: rgba(255,255,255,0.08);
   color: var(--text);
   cursor:grab;
-  min-height:30px;
+  min-height:32px;
   touch-action: none;
+  overflow: hidden;
 }
 
 .report-player-chip.is-touch-picked{
@@ -768,8 +770,7 @@ body.ccp-page .ccp-card{
 .report-player-avatar{
   flex: 0 0 auto;
   height: 100%;
-  min-height: 28px;
-  width: auto;
+  width: 40px;
   display:flex;
   align-items:center;
   justify-content:center;
@@ -779,7 +780,8 @@ body.ccp-page .ccp-card{
 
 .report-player-avatar-img{
   height:100%;
-  width:auto;
+  width:100%;
+  max-height:100%;
   object-fit:cover;
   border-radius:0;
   display:block;
@@ -789,8 +791,8 @@ body.ccp-page .ccp-card{
   display:flex;
   align-items:center;
   justify-content:center;
-  width:28px;
-  height:28px;
+  width:100%;
+  height:100%;
   background: rgba(90,140,255,0.45);
   color: var(--text);
   font-size:12px;
