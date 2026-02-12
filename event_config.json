@@ -1,0 +1,30 @@
+{
+  "min_decks_to_start": 3,
+  "default_num_pods": 2,
+  "max_rounds": 7,
+  "require_all_confirmed_before_pairings": true,
+  "participants": [],
+  "scryfall": {
+    "commander_suggest_query_template": "game:paper is:commander name:{q}",
+    "partner_suggest_query_template": "game:paper is:partner name:{q}",
+    "partner_capable_query_template": "!\"{name}\" is:partner",
+    "default_background_query": "t:basic t:snow e:SLD",
+    "random_commander_query": "game:paper is:commander -t:background"
+  },
+  "ui": {
+    "default_bg_zoom": 1.12,
+    "commander_bg_zoom": 1.0
+  },
+  "api": {
+    "suggest_min_chars": 3,
+    "suggest_limit": 15
+  },
+  "voting": {
+    "scheme_type": "top3_fixed",
+    "points_scheme": {
+      "first": 3,
+      "second": 2,
+      "third": 1
+    }
+  }
+}
