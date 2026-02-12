@@ -45,6 +45,22 @@
             {% endif %}
         {% elif existing_entry %}
         {% if start_file_exists %}
+        {% if existing_entry.pairing_round and existing_entry.pairing_phase != "voting" %}
+            <div class="status ok">
+                Hallo {{ deckOwner }}, willkommen zur Spielrunde {{ existing_entry.pairing_round }}.
+            </div>
+            <div class="status" style="margin-top: 12px;">
+                Runde {{ existing_entry.pairing_round }} – Tisch {{ existing_entry.pairing_table }}
+                <div style="margin-top: 8px;">
+                    <strong>Mitspieler:</strong>
+                    <div style="margin-top: 6px;">
+                        {% for p in existing_entry.pairing_players %}
+                            <div>{{ p }}</div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        {% else %}
         <p class="status">
             Bitte übergebe dieses Deck an
             <span class="status ok" style="display:inline-block; padding:4px 8px; margin-left:6px;">
@@ -71,22 +87,11 @@
             <div class="status danger" style="margin-top: 12px;">
                 Spielphase beendet. Bitte jetzt das Voting starten.
             </div>
-        {% elif existing_entry.pairing_round %}
-            <div class="status" style="margin-top: 12px;">
-                Runde {{ existing_entry.pairing_round }} – Tisch {{ existing_entry.pairing_table }}
-                <div style="margin-top: 8px;">
-                    <strong>Mitspieler:</strong>
-                    <div style="margin-top: 6px;">
-                        {% for p in existing_entry.pairing_players %}
-                            <div>{{ p }}</div>
-                        {% endfor %}
-                    </div>
-                </div>
-            </div>
         {% elif start_file_exists and existing_entry.received_confirmed %}
             <div class="status" style="margin-top: 12px;">
                 Bitte warte auf die Pairings.
             </div>
+        {% endif %}
         {% endif %}
 
         {% else %}
