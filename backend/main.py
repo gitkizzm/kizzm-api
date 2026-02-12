@@ -19,6 +19,12 @@ from backend.services.pairings_service import (
     first_round_with_hosts,
     pod_sizes,
 )
+from backend.services.raffle_service import (
+    RaffleStartError,
+    assign_deck_owners,
+    shuffle_decks as raffle_shuffle_decks,
+    start_raffle as start_raffle_service,
+)
 from backend.services.scryfall_service import (
     get_card_by_id,
     is_partner_exact_name,
@@ -711,23 +717,17 @@ def _debug_start_raffle_in_memory(raffle_list: list[dict]) -> dict:
     with start_file.open("w", encoding="utf-8") as f:
         f.write("")  # empty file
 
-    deckersteller_list = [
-        e.get("deckersteller")
-        for e in raffle_list
-        if e.get("deckersteller")
-    ]
-    unique_decks = list(dict.fromkeys(deckersteller_list))
-    if len(unique_decks) < 3:
-        raise HTTPException(status_code=400, detail="Raffle kann erst ab 3 registrierten Decks gestartet werden.")
+    try:
+        assigned_count = assign_deck_owners(raffle_list)
+    except RaffleStartError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
-    cOrder, gOrder = shuffle_decks(unique_decks)
-    for creator, new_owner in zip(cOrder, gOrder):
-        update_deck_owner(creator, new_owner)
+    _atomic_write_json(FILE_PATH, raffle_list)
 
     return {
         "ok": True,
         "action": "raffle_started",
-        "assigned_count": len(unique_decks),
+        "assigned_count": assigned_count,
     }
 
 
@@ -1145,95 +1145,32 @@ async def start_raffle():
     Führt den Raffle-Start durch und leitet den Benutzer zurück zum CCP.
     """
     try:
-         # Leere start.txt erstellen
-        start_file = START_FILE_PATH
-        with start_file.open("w", encoding="utf-8") as f:
-            f.write("")  # Leere Datei erstellen
-        # Aktionen für den Raffle-Start (optional: hier Platz für Logik)
-        
-        deckersteller_list = []
-        if FILE_PATH.exists():
-            try:
-                with FILE_PATH.open("r", encoding="utf-8") as f:
-                    content = json.load(f)
-                    if isinstance(content, list):
-                        # Sammle alle Deckersteller
-                        deckersteller_list = [entry.get("deckersteller") for entry in content if "deckersteller" in entry]
-            except (json.JSONDecodeError, ValueError):
-                # Fehler beim Einlesen von raffle.json
-                raise HTTPException(status_code=500, detail="Fehler beim Einlesen der raffle.json-Datei.")
-                # Mindestanzahl Decks prüfen
-        unique_decks = list(dict.fromkeys(deckersteller_list))  # dedupe, Reihenfolge egal
-        if len(unique_decks) < 3:
-            raise HTTPException(
-                status_code=400,
-                detail="Raffle kann erst ab 3 registrierten Decks gestartet werden."
-            )
-        cOrder, gOrder=shuffle_decks( unique_decks )
-        for creator, new_owner in zip( cOrder, gOrder ):
-            update_deck_owner( creator, new_owner )
-
+        start_raffle_service(FILE_PATH, START_FILE_PATH)
         await notify_state_change()
-
         return RedirectResponse(url="/CCP", status_code=303)
+    except RaffleStartError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Fehler beim Starten des Raffles: {e}")
 
-def shuffle_decks(deckCreators):
-    creatorOrder = deckCreators[:]
-    giftOrder = deckCreators[:]
-    shuffleCount = 0
+def shuffle_decks(deck_creators):
+    return raffle_shuffle_decks(deck_creators)
 
-    # Shuffle, bis kein Deckersteller sein eigenes Deck erhält
-    while any([i == j for i, j in zip(giftOrder, creatorOrder)]):
-        shuffle(creatorOrder)
-        shuffle(giftOrder)
-        shuffleCount += 1
-        print('Shuffle Count is {}'.format(shuffleCount))
-    else:
-        return giftOrder, creatorOrder
 
 def update_deck_owner(deckersteller, new_deck_owner):
     """
-    Aktualisiert das Feld 'deckOwner' für einen bestimmten 'deckersteller' in der raffle.json.
+    Legacy helper kept for compatibility with existing call sites.
     """
-    try:
-        # Prüfen, ob die Datei existiert
-        if not FILE_PATH.exists():
-            print("Die Datei raffle.json existiert nicht.")
-            return
-
-        # Datei einlesen
-        with FILE_PATH.open("r", encoding="utf-8") as f:
-            content = json.load(f)
-
-        # Sicherstellen, dass der Inhalt eine Liste ist
-        if not isinstance(content, list):
-            print("Ungültiges Format in raffle.json: Erwartet wird eine Liste.")
-            return
-
-        # Den Eintrag für den angegebenen deckersteller finden
-        entry_found = False
-        for entry in content:
-            if entry.get("deckersteller") == deckersteller:
-                entry["deckOwner"] = new_deck_owner  # Feld aktualisieren
-                entry["received_confirmed"] = False
-                entry_found = True
-                break
-
-        if not entry_found:
-            print(f"Kein Eintrag für den Deckersteller '{deckersteller}' gefunden.")
-            return
-
-        # Aktualisierte Daten zurück in die Datei schreiben
-        with FILE_PATH.open("w", encoding="utf-8") as f:
-            json.dump(content, f, ensure_ascii=False, indent=4)
-
-        print(f"Der Eintrag für '{deckersteller}' wurde erfolgreich aktualisiert.")
-    except (json.JSONDecodeError, ValueError) as e:
-        print(f"Fehler beim Einlesen der raffle.json: {e}")
-    except Exception as e:
-        print(f"Ein unerwarteter Fehler ist aufgetreten: {e}")
+    data_list = _load_raffle_list()
+    updated = False
+    for entry in data_list:
+        if entry.get("deckersteller") == deckersteller:
+            entry["deckOwner"] = new_deck_owner
+            entry["received_confirmed"] = False
+            updated = True
+            break
+    if updated:
+        _atomic_write_json(FILE_PATH, data_list)
 
 @app.post("/confirm_received")
 async def confirm_received(deck_id: int = Form(...)):
