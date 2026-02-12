@@ -488,7 +488,7 @@ async function ensureCardPreviewLoaded(){
       const zone = slot.querySelector('.report-dropzone');
       const chipCount = zone ? zone.querySelectorAll('.report-player-chip').length : 0;
       if(chipCount > 0){
-        const needed = 16 + (chipCount * 31);
+        const needed = 18 + (chipCount * 32);
         occupiedTotal += needed;
         slot.style.flex = `0 0 ${needed}px`;
       }else{
@@ -497,7 +497,7 @@ async function ensureCardPreviewLoaded(){
     }
 
     const freeSpace = containerHeight - occupiedTotal - (gap * Math.max(0, slots.length - 1));
-    const perEmpty = emptySlots.length > 0 ? Math.max(14, Math.floor(freeSpace / emptySlots.length)) : 0;
+    const perEmpty = emptySlots.length > 0 ? Math.max(0, Math.floor(freeSpace / emptySlots.length)) : 0;
     for(const slot of emptySlots){
       slot.style.flex = `1 1 ${perEmpty}px`;
     }
