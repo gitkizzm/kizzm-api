@@ -6,6 +6,19 @@ from backend.app_factory import create_app
 from backend.repositories.json_store import atomic_write_json
 from backend.repositories.pairings_repository import load_pairings, write_pairings
 from backend.repositories.raffle_repository import load_raffle_list
+from backend.services.card_rules import (
+    get_image_url,
+    has_choose_a_background,
+    has_friends_forever,
+    is_background,
+    partner_with_target_name,
+)
+from backend.services.scryfall_service import (
+    get_card_by_id,
+    is_partner_exact_name,
+    named_exact,
+    random_commander,
+)
 from backend.config import (
     CACHE_MAX_ENTRIES,
     CACHE_TTL_SECONDS,
@@ -30,7 +43,6 @@ from pathlib import Path
 import pandas as pd
 from random import shuffle, randint, choice
 import time 
-import re 
 from collections import OrderedDict
 from urllib.parse import quote_plus, unquote_plus
 import httpx
@@ -61,18 +73,7 @@ def _cache_set(key: str, value):
         _suggest_cache.popitem(last=False)
 
 def _get_image_url(card: dict, key: str) -> str | None:
-    # key: "art_crop", "border_crop", "large", ...
-    iu = card.get("image_uris")
-    if isinstance(iu, dict) and iu.get(key):
-        return iu[key]
-
-    faces = card.get("card_faces")
-    if isinstance(faces, list) and len(faces) > 0:
-        fu = faces[0].get("image_uris")
-        if isinstance(fu, dict) and fu.get(key):
-            return fu[key]
-
-    return None
+    return get_image_url(card, key)
 
 
 # JSON-Datei
@@ -679,18 +680,7 @@ async def get_form(
     )
 
 async def _scryfall_get_card_by_id(card_id: str) -> dict | None:
-    card_id = (card_id or "").strip()
-    if not card_id:
-        return None
-    url = f"{SCRYFALL_BASE}/cards/{quote_plus(card_id)}"
-    try:
-        async with httpx.AsyncClient(timeout=SCRYFALL_TIMEOUT, headers=SCRYFALL_HEADERS) as client:
-            r = await client.get(url)
-            if r.status_code != 200:
-                return None
-            return r.json()
-    except Exception:
-        return None
+    return await get_card_by_id(card_id)
 
 async def _scryfall_random_commander(exclude_card_ids: set[str] | None = None, max_tries: int = 25) -> dict | None:
     """
@@ -699,75 +689,26 @@ async def _scryfall_random_commander(exclude_card_ids: set[str] | None = None, m
 
     exclude_card_ids: avoids duplicates by Scryfall card id
     """
-    exclude_card_ids = exclude_card_ids or set()
-
-    # Avoid Backgrounds (they are not valid "single commander" in your UI logic anyway)
-    # Keep it simple: random commander-legal card, paper, not background
-    scry_q = "game:paper is:commander -t:background"
-    url = f"{SCRYFALL_BASE}/cards/random?q={quote_plus(scry_q)}"
-
-    try:
-        async with httpx.AsyncClient(timeout=SCRYFALL_TIMEOUT, headers=SCRYFALL_HEADERS) as client:
-            for _ in range(max_tries):
-                r = await client.get(url)
-                if r.status_code != 200:
-                    continue
-                card = r.json()
-                cid = (card.get("id") or "").strip()
-                name = (card.get("name") or "").strip()
-                if not cid or not name:
-                    continue
-                if cid in exclude_card_ids:
-                    continue
-                return card
-    except Exception:
-        return None
-
-    return None
-
-def _t(card: dict) -> str:
-    return (card.get("type_line") or "").lower()
-
-
-def _o(card: dict) -> str:
-    # oracle_text can be empty for some layouts; that's fine for our checks
-    return (card.get("oracle_text") or "").lower()
-
+    return await random_commander(exclude_card_ids=exclude_card_ids, max_tries=max_tries)
 
 def _is_background(card: dict) -> bool:
-    return "background" in _t(card)
+    return is_background(card)
 
 
 def _has_choose_a_background(card: dict) -> bool:
-    return "choose a background" in _o(card)
+    return has_choose_a_background(card)
 
 
 def _has_friends_forever(card: dict) -> bool:
-    return "friends forever" in _o(card)
+    return has_friends_forever(card)
 
 
 def _partner_with_target_name(card: dict) -> str | None:
-    # canonical oracle text: "Partner with <Name>"
-    m = re.search(r"partner with ([^\n\(]+)", card.get("oracle_text") or "", flags=re.IGNORECASE)
-    return m.group(1).strip() if m else None
+    return partner_with_target_name(card)
 
 
 async def _scryfall_is_partner_exact_name(name: str) -> bool:
-    name = (name or "").strip()
-    if not name:
-        return False
-    scry_q = f'!"{name}" is:partner'
-    url = f"{SCRYFALL_BASE}/cards/search?q={quote_plus(scry_q)}&unique=cards"
-    try:
-        async with httpx.AsyncClient(timeout=SCRYFALL_TIMEOUT, headers=SCRYFALL_HEADERS) as client:
-            r = await client.get(url)
-            if r.status_code != 200:
-                return False
-            payload = r.json()
-            total = int(payload.get("total_cards") or 0)
-            return total > 0
-    except Exception:
-        return False
+    return await is_partner_exact_name(name)
 
 
 async def _validate_commander_combo(c1: dict, c2: dict | None) -> str | None:
@@ -1723,95 +1664,14 @@ async def commander_partner_capable(name: str = ""):
     Returns {"partner_capable": bool}
     Checks via Scryfall search: !"<exact name>" is:partner
     """
-    name = (name or "").strip()
-    if not name:
-        return JSONResponse({"partner_capable": False})
-
-    # exact name match + is:partner
-    # Scryfall exact-name search uses !"Card Name"
-    scry_q = f'!"{name}" is:partner'
-    url = f"{SCRYFALL_BASE}/cards/search?q={quote_plus(scry_q)}&unique=cards"
-
-    try:
-        async with httpx.AsyncClient(timeout=SCRYFALL_TIMEOUT, headers=SCRYFALL_HEADERS) as client:
-            r = await client.get(url)
-            if r.status_code != 200:
-                return JSONResponse({"partner_capable": False})
-
-            payload = r.json()
-            total = payload.get("total_cards") or 0
-            return JSONResponse({"partner_capable": bool(total)})
-
-    except Exception:
-        return JSONResponse({"partner_capable": False})
+    return JSONResponse({"partner_capable": await _scryfall_is_partner_exact_name(name)})
 
 async def _scryfall_named_exact(name: str) -> dict | None:
     """
     Resolve a card by exact name via Scryfall.
     Returns card JSON or None.
     """
-    name = (name or "").strip()
-    if not name:
-        return None
-
-    url = f"{SCRYFALL_BASE}/cards/named?exact={quote_plus(name)}"
-    try:
-        async with httpx.AsyncClient(timeout=SCRYFALL_TIMEOUT, headers=SCRYFALL_HEADERS) as client:
-            r = await client.get(url)
-            if r.status_code != 200:
-                return None
-            return r.json()
-    except Exception:
-        return None
-
-
-def _type_line(card: dict) -> str:
-    return (card.get("type_line") or "").lower()
-
-
-def _oracle_text(card: dict) -> str:
-    return (card.get("oracle_text") or "").lower()
-
-
-def _is_background(card: dict) -> bool:
-    # Background is a subtype; appears in type_line like "Enchantment — Background"
-    return "background" in _type_line(card)
-
-
-def _has_choose_a_background(card: dict) -> bool:
-    return "choose a background" in _oracle_text(card)
-
-
-def _has_friends_forever(card: dict) -> bool:
-    return "friends forever" in _oracle_text(card)
-
-
-def _partner_with_target_name(card: dict) -> str | None:
-    # canonical oracle text: "Partner with <Name>"
-    m = re.search(r"partner with ([^\n\(]+)", card.get("oracle_text") or "", flags=re.IGNORECASE)
-    return m.group(1).strip() if m else None
-
-
-async def _scryfall_is_partner_exact_name(name: str) -> bool:
-    """
-    True if Scryfall search finds exact name and is:partner.
-    """
-    name = (name or "").strip()
-    if not name:
-        return False
-
-    scry_q = f'!"{name}" is:partner'
-    url = f"{SCRYFALL_BASE}/cards/search?q={quote_plus(scry_q)}&unique=cards"
-    try:
-        async with httpx.AsyncClient(timeout=SCRYFALL_TIMEOUT, headers=SCRYFALL_HEADERS) as client:
-            r = await client.get(url)
-            if r.status_code != 200:
-                return False
-            payload = r.json()
-            total = int(payload.get("total_cards") or 0)
-            return total > 0
-    except Exception:
-        return False
+    return await named_exact(name)
 
 @app.get("/api/background/default")
 async def background_default():
