@@ -361,13 +361,30 @@ async function ensureCardPreviewLoaded(){
     let changed = true;
     while(changed){
       changed = false;
+
+      // 1) Jeder Gleichstand rutscht so weit nach unten, wie seine Größe verlangt.
+      //    Beispiel: 2 Spieler auf Platz 3 -> Platz 4, 4 Spieler auf Platz 1 -> Platz 4.
+      for(let p = 3; p >= 1; p--){
+        const place = String(p);
+        const count = (buckets[place] || []).length;
+        if(count <= 1) continue;
+
+        const target = String(Math.min(4, p + count - 1));
+        if(target !== place){
+          buckets[target].push(...buckets[place]);
+          buckets[place] = [];
+          changed = true;
+        }
+      }
+
+      // 2) Wenn ein Gleichstand Platz p den Platz p-1 blockiert,
+      //    wird der blockierte Platz nach unten geschoben (nicht nach oben).
       for(let p = 4; p >= 2; p--){
         const place = String(p);
         const blocked = String(p - 1);
-        const shifted = String(Math.max(1, p - 2));
 
-        if(p > 2 && (buckets[place] || []).length > 1 && (buckets[blocked] || []).length > 0){
-          buckets[shifted].push(...buckets[blocked]);
+        if((buckets[place] || []).length > 1 && (buckets[blocked] || []).length > 0){
+          buckets[place].push(...buckets[blocked]);
           buckets[blocked] = [];
           changed = true;
         }
@@ -380,8 +397,6 @@ async function ensureCardPreviewLoaded(){
   function applyNormalizedPlacementsToState(){
     if(!reportState) return;
     const placements = reportCollectPlacements();
-    const assignedCount = Object.values(placements).flat().length;
-    if(assignedCount !== reportState.players.length) return;
 
     const normalized = normalizePlacementsByRules(placements);
     reportState.placements = [];
