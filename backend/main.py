@@ -13,6 +13,12 @@ from backend.services.card_rules import (
     is_background,
     partner_with_target_name,
 )
+from backend.services.pairings_service import (
+    apply_round_to_raffle,
+    build_rounds,
+    first_round_with_hosts,
+    pod_sizes,
+)
 from backend.services.scryfall_service import (
     get_card_by_id,
     is_partner_exact_name,
@@ -183,327 +189,21 @@ def _deckowners(raffle_list: list[dict]) -> list[str]:
     # dedupe (sollte ohnehin eindeutig sein)
     return sorted(list(dict.fromkeys(players)))
 
-from itertools import combinations
 
 def _pod_sizes(n_players: int, num_pods: int) -> list[int]:
-    # Gleichmäßig verteilen: z.B. 7 Spieler, 2 Pods => [4,3]
-    k = max(1, int(num_pods))
-    k = min(k, n_players)
-    base = n_players // k
-    rest = n_players % k
-    sizes = [base + (1 if i < rest else 0) for i in range(k)]
-    sizes.sort(reverse=True)
-    return sizes
+    return pod_sizes(n_players, num_pods)
 
-def _pairs_in_group(group: list[int]) -> list[tuple[int,int]]:
-    g = sorted(group)
-    return [(g[i], g[j]) for i in range(len(g)) for j in range(i+1, len(g))]
-
-def _counts_key(counts: list[list[int]]) -> tuple:
-    # upper triangle flatten
-    n = len(counts)
-    out = []
-    for i in range(n):
-        for j in range(i+1, n):
-            out.append(counts[i][j])
-    return tuple(out)
-
-def _counts_from_key(key: tuple, n: int) -> list[list[int]]:
-    counts = [[0]*n for _ in range(n)]
-    idx = 0
-    for i in range(n):
-        for j in range(i+1, n):
-            v = int(key[idx])
-            idx += 1
-            counts[i][j] = v
-            counts[j][i] = v
-    return counts
-
-def _missing_pairs(counts: list[list[int]]) -> int:
-    n = len(counts)
-    m = 0
-    for i in range(n):
-        for j in range(i+1, n):
-            if counts[i][j] == 0:
-                m += 1
-    return m
-
-def _max_count(counts: list[list[int]]) -> int:
-    n = len(counts)
-    mx = 0
-    for i in range(n):
-        for j in range(i+1, n):
-            if counts[i][j] > mx:
-                mx = counts[i][j]
-    return mx
-
-def _sum_sq(counts: list[list[int]]) -> int:
-    n = len(counts)
-    s = 0
-    for i in range(n):
-        for j in range(i+1, n):
-            v = counts[i][j]
-            s += v*v
-    return s
-
-def _apply_partition(counts: list[list[int]], pods: list[list[int]]) -> list[list[int]]:
-    n = len(counts)
-    newc = [row[:] for row in counts]
-    for pod in pods:
-        for (i, j) in _pairs_in_group(pod):
-            newc[i][j] += 1
-            newc[j][i] += 1
-    return newc
-
-def _gen_partitions(indices: list[int], sizes: list[int]) -> list[list[list[int]]]:
-    """
-    Erzeugt alle Partitionen von indices in Gruppen der gegebenen sizes.
-    Größen sind z.B. [4,4] oder [4,3] etc.
-    Für n<=8 ist das gut machbar.
-    """
-    sizes = list(sizes)
-    sizes.sort(reverse=True)
-
-    res = []
-    indices = sorted(indices)
-
-    def rec(remaining: list[int], si: int, acc: list[list[int]]):
-        if si >= len(sizes):
-            if not remaining:
-                res.append([g[:] for g in acc])
-            return
-        size = sizes[si]
-        if len(remaining) < size:
-            return
-
-        # symmetry breaking: first element in remaining must be in the next group
-        first = remaining[0]
-        for comb in combinations(remaining[1:], size-1):
-            group = [first] + list(comb)
-            group_set = set(group)
-            new_remaining = [x for x in remaining if x not in group_set]
-            acc.append(sorted(group))
-            rec(new_remaining, si+1, acc)
-            acc.pop()
-
-    rec(indices, 0, [])
-    return res
 
 def _first_round_with_hosts(players: list[str], num_pods: int, hosts: list[str]) -> list[list[str]]:
-    """Erzeuge eine gültige Runde-1-Pod-Aufteilung, bei der Hosts auf verschiedene Tische verteilt werden.
+    return first_round_with_hosts(players, num_pods, hosts)
 
-    Regel:
-      - hosts (max. num_pods) werden als erstes je einem Pod zugewiesen (Pod 1..k).
-      - Restliche Spieler werden (randomisiert) aufgefüllt, Podgrößen wie _pod_sizes().
-
-    Rückgabe: Liste von Pods, jeder Pod ist Liste von Spielernamen.
-    """
-    n = len(players)
-    sizes = _pod_sizes(n, num_pods)
-    k = len(sizes)
-
-    # Normalisieren: uniq + in players
-    host_set: list[str] = []
-    seen: set[str] = set()
-    for h in hosts or []:
-        h = (h or "").strip()
-        if not h or h in seen:
-            continue
-        if h not in players:
-            continue
-        seen.add(h)
-        host_set.append(h)
-
-    host_set = host_set[:k]
-
-    remaining = [p for p in players if p not in set(host_set)]
-    shuffle(remaining)
-
-    pods: list[list[str]] = [[] for _ in range(k)]
-
-    # Hosts zuerst, deterministisch nach sortierter Host-Liste (nur für Stabilität)
-    host_sorted = sorted(host_set, key=lambda x: x.lower())
-    for i, h in enumerate(host_sorted):
-        if i >= k:
-            break
-        pods[i].append(h)
-
-    # Rest auffüllen gemäß sizes (in Pod-Reihenfolge)
-    idx = 0
-    for i in range(k):
-        want = sizes[i] - len(pods[i])
-        if want <= 0:
-            continue
-        pods[i].extend(remaining[idx:idx + want])
-        idx += want
-
-    # Sicherheitscheck: alle Spieler genau 1x
-    flat = [p for pod in pods for p in pod]
-    if sorted(flat) != sorted(players):
-        shuffle(remaining)
-        pods = []
-        idx = 0
-        for s in sizes:
-            pods.append(remaining[idx:idx + s])
-            idx += s
-
-    return pods
 
 def _build_rounds(players: list[str], num_pods: int, max_rounds: int = MAX_ROUNDS, fixed_first_round: list[list[str]] | None = None) -> list[list[list[str]]]:
-    """
-    1) BFS: finde minimale Rundenzahl, bis alle Paare mindestens einmal zusammen gespielt haben.
-    2) Danach greedily weitere Runden bis max_rounds zum Ausgleich (min max_count, min sum_sq).
-    """
-    n = len(players)
-    sizes = _pod_sizes(n, num_pods)
-    partitions = _gen_partitions(list(range(n)), sizes)
+    return build_rounds(players, num_pods, max_rounds=max_rounds, fixed_first_round=fixed_first_round)
 
-    # BFS nach minimaler Tiefe, die missing_pairs == 0 erreicht
-    start_counts = [[0] * n for _ in range(n)]
-    rounds_idx: list[list[list[int]]] = []
-
-    # Optional: Runde 1 fixieren (Hosts)
-    if fixed_first_round:
-        name_to_idx = {name: i for i, name in enumerate(players)}
-        fixed_idx: list[list[int]] = []
-        used: set[int] = set()
-        for pod in fixed_first_round:
-            pod_idx: list[int] = []
-            for name in pod:
-                if name not in name_to_idx:
-                    continue
-                pod_idx.append(name_to_idx[name])
-            fixed_idx.append(sorted(pod_idx))
-            used.update(pod_idx)
-
-        ok_sizes = sorted([len(p) for p in fixed_idx], reverse=True) == sorted(sizes, reverse=True)
-        ok_used = len(used) == n
-        if ok_sizes and ok_used:
-            rounds_idx.append(fixed_idx)
-            start_counts = _apply_partition(start_counts, fixed_idx)
-
-    start_key = _counts_key(start_counts)
-
-    from collections import deque
-
-    best_depth_solution = None  # (depth, path_partitions_as_indices, counts_key)
-    visited = set([(start_key, len(rounds_idx))])
-
-    q = deque()
-    q.append((start_key, len(rounds_idx), rounds_idx[:]))  # counts_key, depth, path
-
-    target_depth = None
-
-    while q:
-        key, depth, path = q.popleft()
-        counts = _counts_from_key(key, n)
-
-        miss = _missing_pairs(counts)
-        if miss == 0:
-            target_depth = depth
-            best_depth_solution = (depth, path, key)
-            break
-
-        # nicht über max_rounds hinaus suchen
-        if depth >= max_rounds:
-            continue
-
-        # expand
-        best_candidates = []
-        for pods in partitions:
-            newc = _apply_partition(counts, pods)
-            newkey = _counts_key(newc)
-            # prune by visited at (newkey, depth+1)
-            st = (newkey, depth + 1)
-            if st in visited:
-                continue
-            visited.add(st)
-
-            cost = (_missing_pairs(newc), _max_count(newc), _sum_sq(newc))
-            best_candidates.append((cost, pods, newkey))
-
-        # sort to guide BFS "best-first inside same depth"
-        best_candidates.sort(key=lambda x: x[0])
-
-        # push some best options (n small; keep all is ok, but limit to keep it snappy)
-        for (cost, pods, newkey) in best_candidates[:60]:
-            q.append((newkey, depth + 1, path + [pods]))
-
-    if best_depth_solution is None:
-        # Fallback: greedy build max_rounds
-        counts = start_counts
-        while len(rounds_idx) < max_rounds:
-            best = None
-            for pods in partitions:
-                newc = _apply_partition(counts, pods)
-                cost = (_missing_pairs(newc), _max_count(newc), _sum_sq(newc))
-                if best is None or cost < best[0]:
-                    best = (cost, pods, newc)
-            rounds_idx.append(best[1])
-            counts = best[2]
-    else:
-        depth, rounds_idx, key = best_depth_solution
-        counts = _counts_from_key(key, n)
-
-        # fill remaining rounds greedily for balancing
-        while len(rounds_idx) < max_rounds:
-            best = None
-            for pods in partitions:
-                newc = _apply_partition(counts, pods)
-                # primary now: minimize max_count, then sum_sq, keep missing already 0
-                cost = (_max_count(newc), _sum_sq(newc))
-                if best is None or cost < best[0]:
-                    best = (cost, pods, newc)
-            rounds_idx.append(best[1])
-            counts = best[2]
-
-    # convert indices -> names
-    rounds_named = []
-    for pods in rounds_idx:
-        round_pods = []
-        for pod in pods:
-            round_pods.append([players[i] for i in pod])
-        rounds_named.append(round_pods)
-    return rounds_named
 
 def _apply_round_to_raffle(raffle_list: list[dict], state: dict, round_no: int):
-    """
-    Schreibt in jede raffle.json-Entry:
-      - pairing_round
-      - pairing_table
-      - pairing_players (Liste der Spielernamen am Tisch)
-      - pairing_phase
-    Mapping erfolgt über deckOwner (Spieleridentität).
-    """
-    rounds = state.get("rounds") or []
-    phase = state.get("phase") or "ready"
-    if round_no < 1 or round_no > len(rounds):
-        return
-
-    pods = rounds[round_no - 1]  # 0-indexed
-    # player -> (table_no, players_at_table)
-    assign = {}
-    for t, group in enumerate(pods, start=1):
-        for p in group:
-            assign[p] = (t, group)
-
-    for e in raffle_list:
-        if e.get("deck_id") is None:
-            continue
-        owner = (e.get("deckOwner") or "").strip()
-        if not owner:
-            continue
-        if owner in assign:
-            t, group = assign[owner]
-            e["pairing_round"] = round_no
-            e["pairing_table"] = t
-            e["pairing_players"] = group
-        else:
-            # falls irgendwas nicht zuordenbar ist
-            e["pairing_round"] = round_no
-            e["pairing_table"] = None
-            e["pairing_players"] = []
-        e["pairing_phase"] = phase
+    apply_round_to_raffle(raffle_list, state, round_no)
 
 def _global_signature(start_file_exists: bool, raffle_list: list[dict]) -> str:
     deck_ids = {e.get("deck_id") for e in raffle_list if "deck_id" in e}
