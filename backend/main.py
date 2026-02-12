@@ -1157,6 +1157,39 @@ async def commander_partner_capable(name: str = ""):
     """
     return JSONResponse({"partner_capable": await _scryfall_is_partner_exact_name(name)})
 
+
+@app.get("/api/validate_commander_combo")
+async def validate_commander_combo(commander_id: str = "", commander2_id: str = ""):
+    """
+    Validates the currently selected commander pair.
+    Returns: {"legal": bool, "error": str | None}
+    """
+    commander_id = (commander_id or "").strip()
+    commander2_id = (commander2_id or "").strip()
+
+    if not commander_id or not commander2_id:
+        return JSONResponse(
+            {"legal": False, "error": "Für die Legalitätsprüfung werden beide Commander-IDs benötigt."},
+            status_code=400,
+        )
+
+    c1 = await _scryfall_get_card_by_id(commander_id)
+    if not c1:
+        return JSONResponse(
+            {"legal": False, "error": "Commander 1 konnte bei Scryfall nicht geladen werden. Bitte erneut auswählen."},
+            status_code=404,
+        )
+
+    c2 = await _scryfall_get_card_by_id(commander2_id)
+    if not c2:
+        return JSONResponse(
+            {"legal": False, "error": "Commander 2 konnte bei Scryfall nicht geladen werden. Bitte erneut auswählen."},
+            status_code=404,
+        )
+
+    combo_err = await _validate_commander_combo(c1, c2)
+    return JSONResponse({"legal": combo_err is None, "error": combo_err})
+
 async def _scryfall_named_exact(name: str) -> dict | None:
     """
     Resolve a card by exact name via Scryfall.
