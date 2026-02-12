@@ -71,11 +71,24 @@
                             <label for="numPods">Anzahl Pods / Tische:</label>
                             <input type="number" id="numPods" name="num_pods" min="1" step="1" value="{{ default_num_pods }}">
                             <label for="hosts">Hosts (Startplätze):</label>
-                            <select id="hosts" name="hosts" multiple size="6" style="min-width: 220px;">
-                                {% for p in players %}
-                                    <option value="{{ p }}" {% if p in selected_hosts %}selected{% endif %}>{{ p }}</option>
-                                {% endfor %}
-                            </select>
+                            <div id="hostsMultiselect" class="multiselect" data-placeholder="Hosts auswählen">
+                                <button type="button" id="hostsToggle" class="multiselect-toggle" aria-haspopup="listbox" aria-expanded="false" aria-controls="hostsDropdown">
+                                    Hosts auswählen
+                                </button>
+                                <div id="hostsDropdown" class="multiselect-dropdown" role="listbox" aria-multiselectable="true" hidden>
+                                    {% for p in players %}
+                                        <label class="multiselect-option" role="option" aria-selected="{% if p in selected_hosts %}true{% else %}false{% endif %}">
+                                            <input type="checkbox" value="{{ p }}" {% if p in selected_hosts %}checked{% endif %}>
+                                            <span>{{ p }}</span>
+                                        </label>
+                                    {% endfor %}
+                                </div>
+                                <select id="hosts" name="hosts" multiple hidden aria-hidden="true" tabindex="-1">
+                                    {% for p in players %}
+                                        <option value="{{ p }}" {% if p in selected_hosts %}selected{% endif %}>{{ p }}</option>
+                                    {% endfor %}
+                                </select>
+                            </div>
                             <div class="status" style="margin:0; font-size: 0.95em;">
                                 Optional: Wähle pro Tisch einen Host aus. Hosts werden in Runde 1 zuerst auf verschiedene Tische gesetzt.
                             </div>
