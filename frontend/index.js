@@ -317,16 +317,25 @@ async function ensureCardPreviewLoaded(){
   }
 
   function reportAvatarLabel(name){
+    const trimmed = String(name || "").trim();
+    return trimmed ? trimmed[0].toUpperCase() : "?";
+  }
+
+  function reportDisplayName(name){
     const parts = String(name || "").trim().split(/\s+/).filter(Boolean);
-    if(parts.length === 0) return "?";
-    if(parts.length === 1) return parts[0][0].toUpperCase();
-    return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+    if(parts.length <= 1) return String(name || "").trim();
+    return `${parts[0]} ${parts[1][0].toUpperCase()}.`;
   }
 
   function renderReportPlayer(name){
-    return `<div class="report-player-chip" draggable="true" data-player="${escapeHtml(name)}">
-      <div class="report-player-avatar">${escapeHtml(reportAvatarLabel(name))}</div>
-      <div>${escapeHtml(name)}</div>
+    const meta = reportState?.playerMeta?.[name] || {};
+    const avatar = meta.avatar_url
+      ? `<img src="${escapeHtml(meta.avatar_url)}" alt="" class="report-player-avatar-img">`
+      : `<span class="report-player-avatar-fallback">${escapeHtml(reportAvatarLabel(name))}</span>`;
+
+    return `<div class="report-player-chip" draggable="true" data-player="${escapeHtml(name)}" title="${escapeHtml(name)}">
+      <div class="report-player-avatar">${avatar}</div>
+      <div class="report-player-name">${escapeHtml(reportDisplayName(name))}</div>
     </div>`;
   }
 
@@ -404,6 +413,7 @@ async function ensureCardPreviewLoaded(){
       round: data.round,
       table: data.table,
       players: data.players || [],
+      playerMeta: data.player_meta || {},
       hasReport: !!data.has_report,
       placements: [],
     };

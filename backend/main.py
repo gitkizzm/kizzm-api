@@ -1299,6 +1299,40 @@ async def _scryfall_named_exact(name: str) -> dict | None:
     return await named_exact(name)
 
 
+async def _round_report_avatar_art_url(commander_name: str, commander_id: str | None = None) -> str | None:
+    commander_id = (commander_id or "").strip() or None
+    card = None
+
+    if commander_name:
+        settings = _current_settings()
+        safe_name = commander_name.replace('"', '\\"')
+        query = settings.scryfall.round_report_avatar_query_template.replace('{name}', safe_name)
+        url = (
+            f"{SCRYFALL_BASE}/cards/search?"
+            f"q={quote_plus(query)}&unique=art&order=released&dir=desc"
+        )
+        try:
+            async with httpx.AsyncClient(timeout=SCRYFALL_TIMEOUT, headers=SCRYFALL_HEADERS) as client:
+                r = await client.get(url)
+                if r.status_code == 200:
+                    data = (r.json().get('data') or [])
+                    if data:
+                        card = data[0]
+        except Exception:
+            card = None
+
+    if not card and commander_id:
+        card = await _scryfall_get_card_by_id(commander_id)
+
+    if not card:
+        return None
+
+    img = _get_image_url(card, 'art_crop')
+    if not img:
+        img = _get_image_url(card, 'normal')
+    return img
+
+
 @app.get("/api/settings/effective")
 async def settings_effective():
     settings, meta = load_event_settings()
@@ -1481,10 +1515,21 @@ async def current_round_report(deck_id: int):
     reports_for_round = (state.get("round_reports") or {}).get(str(active_round), {})
     existing = reports_for_round.get(str(table))
 
+    player_meta: dict[str, dict] = {}
+    for player in players:
+        owner_entry = next((e for e in raffle_list if (e.get("deckOwner") or "").strip() == player), None)
+        commander_name = (owner_entry or {}).get("commander") or ""
+        commander_id = (owner_entry or {}).get("commander_id")
+        avatar_url = await _round_report_avatar_art_url(commander_name, commander_id)
+        player_meta[player] = {
+            "avatar_url": avatar_url,
+        }
+
     return {
         "round": active_round,
         "table": table,
         "players": players,
+        "player_meta": player_meta,
         "has_report": bool(existing),
         "report": existing,
     }

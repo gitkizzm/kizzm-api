@@ -177,8 +177,7 @@
                 <div class="report-box report-places" id="reportPlaces">
                     {% for place in [1,2,3,4] %}
                         <div class="report-place-slot" data-place="{{ place }}">
-                            <div class="report-place-title">Platz {{ place }}</div>
-                            <div class="report-dropzone" data-place="{{ place }}"></div>
+                            <div class="report-dropzone" data-place="{{ place }}" data-place-label="Platz {{ place }}"></div>
                         </div>
                     {% endfor %}
                 </div>
