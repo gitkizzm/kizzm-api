@@ -593,3 +593,69 @@ input:disabled::placeholder{
   background: rgba(0,0,0,0.38);          /* noch dunkler */
   opacity: 0.72;
 }
+
+/* CCP tabs + settings */
+.ccp-tabs{
+  display: flex;
+  gap: 8px;
+  margin: 0 0 14px;
+}
+
+.ccp-tab{
+  flex: 1;
+}
+
+.ccp-tab.is-active{
+  background: rgba(90,140,255,0.35);
+  border-color: rgba(90,140,255,0.55);
+  font-weight: 700;
+}
+
+.ccp-panel[hidden]{
+  display: none;
+}
+
+textarea{
+  width: 100%;
+  box-sizing: border-box;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.22);
+  background: rgba(255,255,255,0.12);
+  color: var(--text);
+  outline: none;
+}
+
+.settings-grid label{
+  margin-top: 10px;
+}
+
+.checkbox-row{
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.checkbox-row input[type="checkbox"]{
+  width: auto;
+}
+
+.settings-meta{
+  font-size: 0.95em;
+}
+
+.is-locked{
+  opacity: 0.62;
+}
+
+/* CCP page scrolling fix for long settings tab */
+body.ccp-page{
+  overflow-y: auto;
+  overflow-x: hidden;
+  align-items: flex-start;
+  padding: 18px 0;
+}
+
+body.ccp-page .ccp-card{
+  max-height: none;
+}

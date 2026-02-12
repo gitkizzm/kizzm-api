@@ -6,105 +6,188 @@
     <title>CustomerControlPanel</title>
     <link rel="stylesheet" href="/static/styles.css">
 </head>
-<body>
-    <div class="glass-card">
+<body class="ccp-page">
+    <div class="glass-card ccp-card">
         <h1>Control Panel</h1>
 
-        {% if start_file_exists %}
-            {% if all_confirmed %}
-                <div class="status ok">Alle Decks wurden verteilt</div>
-            {% else %}
-                <div class="status ok">Der Raffle ist gestartet</div>
-            {% endif %}
-
-            {% if pairings_phase == "playing" and active_round > 0 %}
-                <div class="status">Runde {{ active_round }} läuft</div>
-            {% elif pairings_phase == "voting" %}
-                <div class="status danger">Spielphase beendet. Bitte jetzt das Voting starten.</div>
-            {% endif %}
-        {% else %}
-            <div class="status danger">Die Deckregistrierung läuft noch</div>
-        {% endif %}
-
-        {% if deck_count > 0 %}
-            <div class="status status-inline">
-                {% if start_file_exists %}
-                    {{ confirmed_count }} von {{ deck_count }} der Decks wurden ausgeteilt.
-                {% else %}
-                    Es sind {{ deck_count }} unterschiedliche Decks registriert.
-                {% endif %}
-
-                <span class="info-wrap">
-                    <button type="button" class="info-btn" aria-label="Info">i</button>
-                    <div class="info-tooltip">
-                        {% for it in tooltip_items %}
-                            <div class="tooltip-item">
-                                {% if start_file_exists %}
-                                    <span class="recv-icon {% if it.received_confirmed %}is-ok{% else %}is-pending{% endif %}">
-                                        {% if it.received_confirmed %}✓{% else %}?{% endif %}
-                                    </span>
-                                {% endif %}
-                                {{ it.name }}
-                            </div>
-                        {% endfor %}
-                    </div>
-                </span>
-            </div>
-        {% else %}
-            {% if deck_count == 0 %}
-                <div class="status danger">Es sind noch keine Decks eingetragen.</div>
-            {% else %}
-                <div class="status danger">Die Datei raffle.json existiert nicht.</div>
-            {% endif %}
-        {% endif %}
-
-        {% if start_file_exists and all_confirmed %}
-            <div style="margin-top: 14px;">
-                {% if not pairings_started %}
-                    <form action="/startPairings" method="post" class="row" style="gap:10px; margin:0;">
-                        <label for="numPods">Anzahl Pods / Tische:</label>
-                        <input type="number" id="numPods" name="num_pods" min="1" step="1" value="2">
-                        <label for="hosts">Hosts (Startplätze):</label>
-                        <select id="hosts" name="hosts" multiple size="6" style="min-width: 220px;">
-                            {% for p in players %}
-                                <option value="{{ p }}" {% if p in selected_hosts %}selected{% endif %}>{{ p }}</option>
-                            {% endfor %}
-                        </select>
-                        <div class="status" style="margin:0; font-size: 0.95em;">
-                            Optional: Wähle pro Tisch einen Host aus. Hosts werden in Runde 1 zuerst auf verschiedene Tische gesetzt.
-                        </div>
-
-
-                        <div class="btn-row" style="justify-content: flex-end;">
-                            <button type="submit">Pairings starten</button>
-                        </div>
-                    </form>
-                {% else %}
-                    <div class="btn-row" style="justify-content: space-between;">
-                        <form action="/endPlayPhase" method="post" style="margin:0;">
-                            <button type="submit">Spielphase beenden</button>
-                        </form>
-
-                        <form action="/nextRound" method="post" style="margin:0;">
-                            <button type="submit" {% if pairings_phase != "playing" %}disabled{% endif %}>Nächste Runde starten</button>
-                        </form>
-                    </div>
-                {% endif %}
-            </div>
-        {% endif %}
-
-        <div class="btn-row" style="justify-content: space-between;">
-            <!-- Clear wird erst nach Confirm abgeschickt -->
-            <form id="clearForm" action="/clear" method="post" style="margin:0;">
-                <button type="button" id="openClearModal">Daten löschen</button>
-            </form>
-
-            <form action="/startRaffle" method="post" style="margin:0;">
-                <button type="submit" {% if deck_count < 3 or start_file_exists %}disabled{% endif %}>
-                    Raffle starten
-                </button>
-            </form>
+        <div class="ccp-tabs" role="tablist" aria-label="Control Panel Tabs">
+            <button type="button" class="ccp-tab is-active" data-tab="controls" role="tab" aria-selected="true">Controls</button>
+            <button type="button" class="ccp-tab" data-tab="settings" role="tab" aria-selected="false">Settings</button>
         </div>
+
+        <section class="ccp-panel is-active" data-panel="controls">
+            {% if start_file_exists %}
+                {% if all_confirmed %}
+                    <div class="status ok">Alle Decks wurden verteilt</div>
+                {% else %}
+                    <div class="status ok">Der Raffle ist gestartet</div>
+                {% endif %}
+
+                {% if pairings_phase == "playing" and active_round > 0 %}
+                    <div class="status">Runde {{ active_round }} läuft</div>
+                {% elif pairings_phase == "voting" %}
+                    <div class="status danger">Spielphase beendet. Bitte jetzt das Voting starten.</div>
+                {% endif %}
+            {% else %}
+                <div class="status danger">Die Deckregistrierung läuft noch</div>
+            {% endif %}
+
+            {% if deck_count > 0 %}
+                <div class="status status-inline">
+                    {% if start_file_exists %}
+                        {{ confirmed_count }} von {{ deck_count }} der Decks wurden ausgeteilt.
+                    {% else %}
+                        Es sind {{ deck_count }} unterschiedliche Decks registriert.
+                    {% endif %}
+
+                    <span class="info-wrap">
+                        <button type="button" class="info-btn" aria-label="Info">i</button>
+                        <div class="info-tooltip">
+                            {% for it in tooltip_items %}
+                                <div class="tooltip-item">
+                                    {% if start_file_exists %}
+                                        <span class="recv-icon {% if it.received_confirmed %}is-ok{% else %}is-pending{% endif %}">
+                                            {% if it.received_confirmed %}✓{% else %}?{% endif %}
+                                        </span>
+                                    {% endif %}
+                                    {{ it.name }}
+                                </div>
+                            {% endfor %}
+                        </div>
+                    </span>
+                </div>
+            {% else %}
+                {% if deck_count == 0 %}
+                    <div class="status danger">Es sind noch keine Decks eingetragen.</div>
+                {% else %}
+                    <div class="status danger">Die Datei raffle.json existiert nicht.</div>
+                {% endif %}
+            {% endif %}
+
+            {% if start_file_exists and all_confirmed %}
+                <div style="margin-top: 14px;">
+                    {% if not pairings_started %}
+                        <form action="/startPairings" method="post" class="row" style="gap:10px; margin:0;">
+                            <label for="numPods">Anzahl Pods / Tische:</label>
+                            <input type="number" id="numPods" name="num_pods" min="1" step="1" value="{{ default_num_pods }}">
+                            <label for="hosts">Hosts (Startplätze):</label>
+                            <select id="hosts" name="hosts" multiple size="6" style="min-width: 220px;">
+                                {% for p in players %}
+                                    <option value="{{ p }}" {% if p in selected_hosts %}selected{% endif %}>{{ p }}</option>
+                                {% endfor %}
+                            </select>
+                            <div class="status" style="margin:0; font-size: 0.95em;">
+                                Optional: Wähle pro Tisch einen Host aus. Hosts werden in Runde 1 zuerst auf verschiedene Tische gesetzt.
+                            </div>
+
+
+                            <div class="btn-row" style="justify-content: flex-end;">
+                                <button type="submit">Pairings starten</button>
+                            </div>
+                        </form>
+                    {% else %}
+                        <div class="btn-row" style="justify-content: space-between;">
+                            <form action="/endPlayPhase" method="post" style="margin:0;">
+                                <button type="submit">Spielphase beenden</button>
+                            </form>
+
+                            <form action="/nextRound" method="post" style="margin:0;">
+                                <button type="submit" {% if pairings_phase != "playing" %}disabled{% endif %}>Nächste Runde starten</button>
+                            </form>
+                        </div>
+                    {% endif %}
+                </div>
+            {% endif %}
+
+            <div class="btn-row" style="justify-content: space-between;">
+                <!-- Clear wird erst nach Confirm abgeschickt -->
+                <form id="clearForm" action="/clear" method="post" style="margin:0;">
+                    <button type="button" id="openClearModal">Daten löschen</button>
+                </form>
+
+                <form action="/startRaffle" method="post" style="margin:0;">
+                    <button type="submit" {% if deck_count < min_decks_to_start or start_file_exists %}disabled{% endif %}>
+                        Raffle starten
+                    </button>
+                </form>
+            </div>
+        </section>
+
+        <section class="ccp-panel" data-panel="settings" hidden>
+            <div id="settingsAlert" class="status" style="display:none;"></div>
+            <div id="settingsMeta" class="status settings-meta">Lade Settings ...</div>
+
+            <form id="settingsForm" class="row settings-grid" style="margin-top: 8px;">
+                <label>Teilnehmer (eine Zeile pro Name)
+                    <textarea id="participants" data-key="participants" rows="5"></textarea>
+                </label>
+
+                <label>Minimum Decks für Raffle Start
+                    <input type="number" id="min_decks_to_start" data-key="min_decks_to_start" min="2" step="1">
+                </label>
+
+                <label>Default Pods
+                    <input type="number" id="default_num_pods" data-key="default_num_pods" min="1" step="1">
+                </label>
+
+                <label>Max Runden
+                    <input type="number" id="max_rounds" data-key="max_rounds" min="1" step="1">
+                </label>
+
+                <label class="checkbox-row"><input type="checkbox" id="require_all_confirmed_before_pairings" data-key="require_all_confirmed_before_pairings"> Alle Decks müssen bestätigt sein vor Pairings</label>
+
+                <label>Commander Suggest Query
+                    <input type="text" id="commander_suggest_query_template" data-key="scryfall.commander_suggest_query_template">
+                </label>
+
+                <label>Partner Suggest Query
+                    <input type="text" id="partner_suggest_query_template" data-key="scryfall.partner_suggest_query_template">
+                </label>
+
+                <label>Partner Capable Query
+                    <input type="text" id="partner_capable_query_template" data-key="scryfall.partner_capable_query_template">
+                </label>
+
+                <label>Background Query
+                    <input type="text" id="default_background_query" data-key="scryfall.default_background_query">
+                </label>
+
+                <label>Random Commander Query
+                    <input type="text" id="random_commander_query" data-key="scryfall.random_commander_query">
+                </label>
+
+                <label>Default BG Zoom
+                    <input type="number" id="default_bg_zoom" data-key="ui.default_bg_zoom" step="0.01">
+                </label>
+
+                <label>Commander BG Zoom
+                    <input type="number" id="commander_bg_zoom" data-key="ui.commander_bg_zoom" step="0.01">
+                </label>
+
+                <label>Suggest Min Chars
+                    <input type="number" id="suggest_min_chars" data-key="api.suggest_min_chars" min="1" step="1">
+                </label>
+
+                <label>Suggest Limit
+                    <input type="number" id="suggest_limit" data-key="api.suggest_limit" min="1" step="1">
+                </label>
+
+                <label>Voting Scheme
+                    <select id="voting_scheme_type" data-key="voting.scheme_type">
+                        <option value="top3_fixed">top3_fixed</option>
+                    </select>
+                </label>
+
+                <label>Voting Points JSON
+                    <textarea id="voting_points_scheme" data-key="voting.points_scheme" rows="4"></textarea>
+                </label>
+            </form>
+
+            <div class="btn-row">
+                <button type="button" id="resetSettingsBtn">Auf Defaults zurücksetzen</button>
+                <button type="button" id="saveSettingsBtn">Settings speichern</button>
+            </div>
+        </section>
 
     </div>
 

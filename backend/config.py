@@ -22,6 +22,7 @@ RAFFLE_FILE_PATH = Path("raffle.json")
 PAIRINGS_FILE_PATH = Path("pairings.json")
 START_FILE_PATH = Path("start.txt")
 PARTICIPANTS_FILE_PATH = Path("teilnehmer.txt")
+EVENT_CONFIG_FILE_PATH = Path("event_config.json")
 
 STATIC_DIR = "frontend"
 TEMPLATES_DIR = "frontend"
