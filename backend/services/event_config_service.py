@@ -46,6 +46,7 @@ class ScryfallSettings(BaseModel):
     partner_capable_query_template: str = '!"{name}" is:partner'
     default_background_query: str = DEFAULT_BG_QUERY
     random_commander_query: str = "game:paper is:commander -t:background"
+    round_report_avatar_query_template: str = 'game:paper is:normal !"{name}"'
 
 
 class UISettings(BaseModel):
@@ -105,6 +106,7 @@ SETTING_LOCKS: dict[str, SettingsLockLevel] = {
     "scryfall.partner_capable_query_template": SettingsLockLevel.UNTIL_PAIRINGS_START,
     "scryfall.default_background_query": SettingsLockLevel.ALWAYS,
     "scryfall.random_commander_query": SettingsLockLevel.UNTIL_PAIRINGS_START,
+    "scryfall.round_report_avatar_query_template": SettingsLockLevel.UNTIL_PAIRINGS_START,
     "ui.default_bg_zoom": SettingsLockLevel.ALWAYS,
     "ui.commander_bg_zoom": SettingsLockLevel.ALWAYS,
     "api.suggest_min_chars": SettingsLockLevel.ALWAYS,
