@@ -647,3 +647,15 @@ textarea{
 .is-locked{
   opacity: 0.62;
 }
+
+/* CCP page scrolling fix for long settings tab */
+body.ccp-page{
+  overflow-y: auto;
+  overflow-x: hidden;
+  align-items: flex-start;
+  padding: 18px 0;
+}
+
+body.ccp-page .ccp-card{
+  max-height: none;
+}
