@@ -277,11 +277,76 @@
     document.getElementById('resetSettingsBtn')?.addEventListener('click', resetSettings);
   }
 
+  function initHostsMultiselect(){
+    const wrapper = document.getElementById('hostsMultiselect');
+    const toggle = document.getElementById('hostsToggle');
+    const dropdown = document.getElementById('hostsDropdown');
+    const nativeSelect = document.getElementById('hosts');
+    if(!wrapper || !toggle || !dropdown || !nativeSelect) return;
+
+    const checkboxes = Array.from(dropdown.querySelectorAll('input[type="checkbox"]'));
+    const optionsByValue = new Map(Array.from(nativeSelect.options).map((opt) => [opt.value, opt]));
+    const placeholder = wrapper.dataset.placeholder || 'Hosts auswählen';
+
+    function selectedLabels(){
+      return checkboxes.filter((cb) => cb.checked).map((cb) => cb.value);
+    }
+
+    function syncLabel(){
+      const names = selectedLabels();
+      if(names.length === 0){
+        toggle.textContent = placeholder;
+      }else if(names.length <= 2){
+        toggle.textContent = names.join(', ');
+      }else{
+        toggle.textContent = `${names.length} Hosts ausgewählt`;
+      }
+    }
+
+    function syncNativeSelect(){
+      checkboxes.forEach((cb) => {
+        const option = optionsByValue.get(cb.value);
+        if(option) option.selected = cb.checked;
+        const parentLabel = cb.closest('.multiselect-option');
+        parentLabel?.setAttribute('aria-selected', cb.checked ? 'true' : 'false');
+      });
+    }
+
+    function setOpen(open){
+      wrapper.classList.toggle('is-open', open);
+      dropdown.hidden = !open;
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+
+    toggle.addEventListener('click', () => {
+      setOpen(dropdown.hidden);
+    });
+
+    checkboxes.forEach((cb) => {
+      cb.addEventListener('change', () => {
+        syncNativeSelect();
+        syncLabel();
+      });
+    });
+
+    document.addEventListener('click', (ev) => {
+      if(!wrapper.contains(ev.target)) setOpen(false);
+    });
+
+    document.addEventListener('keydown', (ev) => {
+      if(ev.key === 'Escape') setOpen(false);
+    });
+
+    syncNativeSelect();
+    syncLabel();
+  }
+
   document.addEventListener("DOMContentLoaded", () => {
     loadDefaultBackground();
     connectWS();
     initClearModal();
     initTabs();
+    initHostsMultiselect();
     initSettingsActions();
     loadSettings();
   });
