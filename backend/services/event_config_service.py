@@ -13,6 +13,7 @@ from backend.config import (
     DEFAULT_BG_ZOOM,
     EVENT_CONFIG_FILE_PATH,
     MAX_ROUNDS,
+    PARTICIPANTS_FILE_PATH,
     SUGGEST_LIMIT,
     SUGGEST_MIN_CHARS,
 )
@@ -76,7 +77,21 @@ class EventSettings(BaseModel):
     voting: VotingSettings = Field(default_factory=VotingSettings)
 
 
-DEFAULT_SETTINGS = EventSettings()
+def _load_default_participants(path: Path = PARTICIPANTS_FILE_PATH) -> list[str]:
+    try:
+        if not path.exists():
+            return []
+        with path.open("r", encoding="utf-8") as f:
+            return [line.strip() for line in f.readlines() if line.strip()]
+    except Exception:
+        return []
+
+
+def get_default_settings(participants_path: Path = PARTICIPANTS_FILE_PATH) -> EventSettings:
+    return EventSettings(participants=_load_default_participants(participants_path))
+
+
+DEFAULT_SETTINGS = get_default_settings()
 
 
 SETTING_LOCKS: dict[str, SettingsLockLevel] = {
@@ -109,19 +124,19 @@ def load_event_settings(path: Path = EVENT_CONFIG_FILE_PATH) -> tuple[EventSetti
     Metadata contains source and optional validation error string.
     """
     if not path.exists():
-        return DEFAULT_SETTINGS, {"source": "defaults", "path": str(path), "error": None}
+        return get_default_settings(), {"source": "defaults", "path": str(path), "error": None}
 
     try:
         with path.open("r", encoding="utf-8") as f:
             payload = json.load(f)
     except Exception as exc:
-        return DEFAULT_SETTINGS, {"source": "defaults", "path": str(path), "error": f"read_error: {exc}"}
+        return get_default_settings(), {"source": "defaults", "path": str(path), "error": f"read_error: {exc}"}
 
     try:
         parsed = EventSettings.model_validate(payload)
         return parsed, {"source": "file", "path": str(path), "error": None}
     except ValidationError as exc:
-        return DEFAULT_SETTINGS, {"source": "defaults", "path": str(path), "error": f"validation_error: {exc}"}
+        return get_default_settings(), {"source": "defaults", "path": str(path), "error": f"validation_error: {exc}"}
 
 
 def detect_event_state(
@@ -253,7 +268,7 @@ def reset_settings_with_locks(
     current_settings: EventSettings,
     event_state: EventState,
 ) -> tuple[EventSettings, list[str], list[str]]:
-    default_dict = settings_as_dict(DEFAULT_SETTINGS)
+    default_dict = settings_as_dict(get_default_settings())
     editable_keys = _editable_keys(event_state)
 
     editable_patch: dict[str, Any] = {}
