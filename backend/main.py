@@ -3,6 +3,9 @@ from fastapi import Form, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from backend.schemas import DeckSchema
 from backend.app_factory import create_app
+from backend.repositories.json_store import atomic_write_json
+from backend.repositories.pairings_repository import load_pairings, write_pairings
+from backend.repositories.raffle_repository import load_raffle_list
 from backend.config import (
     CACHE_MAX_ENTRIES,
     CACHE_TTL_SECONDS,
@@ -31,7 +34,6 @@ import re
 from collections import OrderedDict
 from urllib.parse import quote_plus, unquote_plus
 import httpx
-import os
 #python -m uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 
 _suggest_cache = OrderedDict()  # key -> (timestamp, result_list)
@@ -86,10 +88,7 @@ def _atomic_write_json(path: Path, data) -> None:
     - erst in temp-Datei schreiben
     - dann os.replace (atomarer rename) auf Ziel
     """
-    tmp_path = path.with_suffix(path.suffix + ".tmp")
-    with tmp_path.open("w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=4)
-    os.replace(tmp_path, path)
+    atomic_write_json(path, data)
 
 # FastAPI-App erstellen
 app, templates = create_app()
@@ -155,32 +154,14 @@ _last_global_sig: str | None = None
 _last_deck_sig: dict[int, str] = {}
 
 def _load_raffle_list() -> list[dict]:
-    if not FILE_PATH.exists():
-        return []
-    try:
-        with FILE_PATH.open("r", encoding="utf-8") as f:
-            content = json.load(f)
-            if isinstance(content, list):
-                return content
-            if isinstance(content, dict):
-                return [content]
-    except (json.JSONDecodeError, ValueError):
-        pass
-    return []
+    return load_raffle_list(FILE_PATH)
 
 def _load_pairings() -> dict | None:
-    if not PAIRINGS_PATH.exists():
-        return None
-    try:
-        with PAIRINGS_PATH.open("r", encoding="utf-8") as f:
-            data = json.load(f)
-            return data if isinstance(data, dict) else None
-    except Exception:
-        return None
+    return load_pairings(PAIRINGS_PATH)
 
 
 def _atomic_write_pairings(data: dict) -> None:
-    _atomic_write_json(PAIRINGS_PATH, data)
+    write_pairings(PAIRINGS_PATH, data)
 
 
 def _all_received_confirmed(raffle_list: list[dict]) -> bool:
