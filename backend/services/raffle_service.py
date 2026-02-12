@@ -20,15 +20,15 @@ def shuffle_decks(deck_creators: list[str]) -> tuple[list[str], list[str]]:
     return gift_order, creator_order
 
 
-def assign_deck_owners(raffle_list: list[dict]) -> int:
+def assign_deck_owners(raffle_list: list[dict], min_decks: int = 3) -> int:
     deckersteller_list = [
         e.get("deckersteller")
         for e in raffle_list
         if e.get("deckersteller")
     ]
     unique_decks = list(dict.fromkeys(deckersteller_list))
-    if len(unique_decks) < 3:
-        raise RaffleStartError("Raffle kann erst ab 3 registrierten Decks gestartet werden.")
+    if len(unique_decks) < int(min_decks):
+        raise RaffleStartError(f"Raffle kann erst ab {int(min_decks)} registrierten Decks gestartet werden.")
 
     c_order, g_order = shuffle_decks(unique_decks)
 
@@ -43,9 +43,9 @@ def assign_deck_owners(raffle_list: list[dict]) -> int:
     return len(unique_decks)
 
 
-def start_raffle(file_path: Path, start_file_path: Path) -> int:
+def start_raffle(file_path: Path, start_file_path: Path, min_decks: int = 3) -> int:
     raffle_list = load_raffle_list(file_path)
-    assigned_count = assign_deck_owners(raffle_list)
+    assigned_count = assign_deck_owners(raffle_list, min_decks=min_decks)
 
     with start_file_path.open("w", encoding="utf-8") as f:
         f.write("")
