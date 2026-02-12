@@ -2,3 +2,4 @@
 start.txt
 *.pyc
 fix.patch
+!event_config.json

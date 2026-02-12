@@ -38,6 +38,12 @@ from backend.services.scryfall_service import (
     named_exact,
     random_commander,
 )
+from backend.services.event_config_service import (
+    detect_event_state,
+    load_event_settings,
+    settings_as_dict,
+    settings_editability,
+)
 from backend.config import (
     CACHE_MAX_ENTRIES,
     CACHE_TTL_SECONDS,
@@ -172,6 +178,11 @@ def _global_signature(start_file_exists: bool, raffle_list: list[dict]) -> str:
 def _deck_signature(deck_id: int, start_file_exists: bool, raffle_list: list[dict]) -> str:
     return deck_signature(deck_id, start_file_exists, raffle_list)
 
+
+def _current_settings():
+    settings, _meta = load_event_settings()
+    return settings
+
 async def notify_state_change():
     """
     Called after any write to raffle.json or start.txt.
@@ -220,10 +231,14 @@ async def get_form(
     """
     # Prüfen, ob teilnehmer.txt existiert und Namen laden
     participants = []
-    participants_file = PARTICIPANTS_FILE_PATH
-    if participants_file.exists():
-        with participants_file.open("r", encoding="utf-8") as f:
-            participants = [line.strip() for line in f.readlines() if line.strip()]  # Entferne leere Zeilen
+    settings = _current_settings()
+    if settings.participants:
+        participants = settings.participants
+    else:
+        participants_file = PARTICIPANTS_FILE_PATH
+        if participants_file.exists():
+            with participants_file.open("r", encoding="utf-8") as f:
+                participants = [line.strip() for line in f.readlines() if line.strip()]  # Entferne leere Zeilen
 
     # Status von start.txt prüfen
     start_file_exists = START_FILE_PATH.exists()
@@ -330,7 +345,7 @@ async def _scryfall_random_commander(exclude_card_ids: set[str] | None = None, m
 
     exclude_card_ids: avoids duplicates by Scryfall card id
     """
-    return await random_commander(exclude_card_ids=exclude_card_ids, max_tries=max_tries)
+    return await random_commander(exclude_card_ids=exclude_card_ids, max_tries=max_tries, query_template=_current_settings().scryfall.random_commander_query)
 
 def _is_background(card: dict) -> bool:
     return is_background(card)
@@ -349,7 +364,7 @@ def _partner_with_target_name(card: dict) -> str | None:
 
 
 async def _scryfall_is_partner_exact_name(name: str) -> bool:
-    return await is_partner_exact_name(name)
+    return await is_partner_exact_name(name, query_template=_current_settings().scryfall.partner_capable_query_template)
 
 
 async def _validate_commander_combo(c1: dict, c2: dict | None) -> str | None:
@@ -589,7 +604,7 @@ async def clear_data():
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Fehler beim Löschen der Dateien: {e}")
 
-def _debug_has_minimal_registrations(raffle_list: list[dict], min_decks: int = 3) -> bool:
+def _debug_has_minimal_registrations(raffle_list: list[dict], min_decks: int) -> bool:
     """
     True if we have at least min_decks entries that look like a valid registration
     (start.txt not yet present).
@@ -623,7 +638,7 @@ def _debug_detect_phase(start_file_exists: bool, raffle_list: list[dict], pair_s
     """
     if not start_file_exists:
         # before raffle: either fill test registrations or start raffle if possible
-        if _debug_has_minimal_registrations(raffle_list, min_decks=3):
+        if _debug_has_minimal_registrations(raffle_list, min_decks=_current_settings().min_decks_to_start):
             return "raffle_start_needed"
         return "registration_needed"
 
@@ -681,7 +696,7 @@ def _debug_start_pairings_in_memory(raffle_list: list[dict]) -> dict:
         raise HTTPException(status_code=400, detail="Zu wenige Spieler.")
 
     num_pods = _debug_pick_num_pods(len(players))
-    rounds = _build_rounds(players, int(num_pods), MAX_ROUNDS)
+    rounds = _build_rounds(players, int(num_pods), _current_settings().max_rounds)
 
     state = {
         "pods": int(num_pods),
@@ -931,6 +946,7 @@ async def customer_control_panel(request: Request):
     Zeigt die Customer Control Panel Seite an, überprüft den Status von start.txt und raffle.json.
     """
     start_file_exists = START_FILE_PATH.exists()
+    settings = _current_settings()
 
     deck_count = -1
 
@@ -1014,6 +1030,8 @@ async def customer_control_panel(request: Request):
             "active_round": active_round,
             "players": players,
             "selected_hosts": selected_hosts,
+            "default_num_pods": settings.default_num_pods,
+            "min_decks_to_start": settings.min_decks_to_start,
         }
     )
 
@@ -1023,7 +1041,7 @@ async def start_raffle():
     Führt den Raffle-Start durch und leitet den Benutzer zurück zum CCP.
     """
     try:
-        start_raffle_service(FILE_PATH, START_FILE_PATH)
+        start_raffle_service(FILE_PATH, START_FILE_PATH, min_decks=_current_settings().min_decks_to_start)
         await notify_state_change()
         return RedirectResponse(url="/CCP", status_code=303)
     except RaffleStartError as e:
@@ -1081,7 +1099,8 @@ async def commander_suggest(q: str = ""):
     Each item: {name, id, oracle_id, type_line}
     """
     q = (q or "").strip()
-    if len(q) < SUGGEST_MIN_CHARS:
+    settings = _current_settings()
+    if len(q) < settings.api.suggest_min_chars:
         return JSONResponse([])
 
     key = f"cmd::{q.lower()}"
@@ -1089,7 +1108,7 @@ async def commander_suggest(q: str = ""):
     if cached is not None:
         return JSONResponse(cached)
 
-    scry_q = f"game:paper is:commander name:{q}"
+    scry_q = settings.scryfall.commander_suggest_query_template.replace("{q}", q)
     url = f"{SCRYFALL_BASE}/cards/search?q={quote_plus(scry_q)}&unique=cards&order=name"
 
     headers = {
@@ -1117,7 +1136,7 @@ async def commander_suggest(q: str = ""):
                         "oracle_id": card.get("oracle_id"),
                         "type_line": card.get("type_line"),
                     })
-                if len(items) >= SUGGEST_LIMIT:
+                if len(items) >= settings.api.suggest_limit:
                     break
 
             _cache_set(key, items)
@@ -1133,7 +1152,8 @@ async def partner_suggest(q: str = ""):
     Each item: {name, id, oracle_id, type_line}
     """
     q = (q or "").strip()
-    if len(q) < SUGGEST_MIN_CHARS:
+    settings = _current_settings()
+    if len(q) < settings.api.suggest_min_chars:
         return JSONResponse([])
 
     key = f"partner::{q.lower()}"
@@ -1141,7 +1161,7 @@ async def partner_suggest(q: str = ""):
     if cached is not None:
         return JSONResponse(cached)
 
-    scry_q = f"game:paper is:partner name:{q}"
+    scry_q = settings.scryfall.partner_suggest_query_template.replace("{q}", q)
     url = f"{SCRYFALL_BASE}/cards/search?q={quote_plus(scry_q)}&unique=cards&order=name"
 
     try:
@@ -1164,7 +1184,7 @@ async def partner_suggest(q: str = ""):
                         "oracle_id": card.get("oracle_id"),
                         "type_line": card.get("type_line"),
                     })
-                if len(items) >= SUGGEST_LIMIT:
+                if len(items) >= settings.api.suggest_limit:
                     break
 
             _cache_set(key, items)
@@ -1221,6 +1241,21 @@ async def _scryfall_named_exact(name: str) -> dict | None:
     """
     return await named_exact(name)
 
+
+@app.get("/api/settings/effective")
+async def settings_effective():
+    settings, meta = load_event_settings()
+    raffle_list = _load_raffle_list()
+    pairings = _load_pairings()
+    state = detect_event_state(START_FILE_PATH.exists(), raffle_list, pairings)
+
+    return JSONResponse({
+        "settings": settings_as_dict(settings),
+        "meta": meta,
+        "event_state": state.value,
+        "editability": settings_editability(state),
+    })
+
 @app.get("/api/background/default")
 async def background_default():
     """
@@ -1228,6 +1263,8 @@ async def background_default():
     - Prefer local PNG from assets/backgrounds/ (random choice)
     - Fallback: current Scryfall-based default
     """
+    settings = _current_settings()
+
     # 1) Local PNG backgrounds (preferred)
     bg_dir = Path("assets") / "backgrounds"
     try:
@@ -1239,30 +1276,30 @@ async def background_default():
                 picked = choice(pngs)
                 # served via app.mount("/assets", StaticFiles(directory="assets"))
                 return JSONResponse(
-                    {"url": f"/assets/backgrounds/{picked.name}", "zoom": DEFAULT_BG_ZOOM}
+                    {"url": f"/assets/backgrounds/{picked.name}", "zoom": settings.ui.default_bg_zoom}
                 )
     except Exception:
         # any filesystem weirdness -> fall back to Scryfall
         pass
 
     # 2) Fallback: Scryfall default (existing logic)
-    q = DEFAULT_BG_QUERY
+    q = settings.scryfall.default_background_query
     url = f"{SCRYFALL_BASE}/cards/search?q={quote_plus(q)}&unique=cards&order=name"
 
     try:
         async with httpx.AsyncClient(timeout=SCRYFALL_TIMEOUT, headers=SCRYFALL_HEADERS) as client:
             first = await client.get(url)
             if first.status_code != 200:
-                return JSONResponse({"url": None, "zoom": DEFAULT_BG_ZOOM})
+                return JSONResponse({"url": None, "zoom": settings.ui.default_bg_zoom})
 
             payload = first.json()
             total = int(payload.get("total_cards") or 0)
             if total <= 0:
-                return JSONResponse({"url": None, "zoom": DEFAULT_BG_ZOOM})
+                return JSONResponse({"url": None, "zoom": settings.ui.default_bg_zoom})
 
             per_page = len(payload.get("data") or [])
             if per_page <= 0:
-                return JSONResponse({"url": None, "zoom": DEFAULT_BG_ZOOM})
+                return JSONResponse({"url": None, "zoom": settings.ui.default_bg_zoom})
 
             max_page = max(1, (total + per_page - 1) // per_page)
             page = randint(1, max_page)
@@ -1270,24 +1307,24 @@ async def background_default():
             page_url = url + f"&page={page}"
             resp = await client.get(page_url)
             if resp.status_code != 200:
-                return JSONResponse({"url": None, "zoom": DEFAULT_BG_ZOOM})
+                return JSONResponse({"url": None, "zoom": settings.ui.default_bg_zoom})
 
             data = (resp.json().get("data") or [])
             if not data:
-                return JSONResponse({"url": None, "zoom": DEFAULT_BG_ZOOM})
+                return JSONResponse({"url": None, "zoom": settings.ui.default_bg_zoom})
 
             card = data[randint(0, len(data) - 1)]
             img = _get_image_url(card, "art_crop")
-            return JSONResponse({"url": img, "zoom": DEFAULT_BG_ZOOM})
+            return JSONResponse({"url": img, "zoom": settings.ui.default_bg_zoom})
 
     except Exception:
-        return JSONResponse({"url": None, "zoom": DEFAULT_BG_ZOOM})
+        return JSONResponse({"url": None, "zoom": settings.ui.default_bg_zoom})
 
 @app.get("/api/background/commander")
 async def background_commander(name: str = ""):
     name = (name or "").strip()
     if not name:
-        return JSONResponse({"url": None, "zoom": COMMANDER_BG_ZOOM})
+        return JSONResponse({"url": None, "zoom": _current_settings().ui.commander_bg_zoom})
 
     # exakt (mit Escape für Quotes)
     safe = name.replace('"', '\\"')
@@ -1302,21 +1339,21 @@ async def background_commander(name: str = ""):
         async with httpx.AsyncClient(timeout=SCRYFALL_TIMEOUT, headers=SCRYFALL_HEADERS) as client:
             r = await client.get(url)
             if r.status_code != 200:
-                return JSONResponse({"url": None, "zoom": COMMANDER_BG_ZOOM})
+                return JSONResponse({"url": None, "zoom": _current_settings().ui.commander_bg_zoom})
 
             data = (r.json().get("data") or [])
             if not data:
-                return JSONResponse({"url": None, "zoom": COMMANDER_BG_ZOOM})
+                return JSONResponse({"url": None, "zoom": _current_settings().ui.commander_bg_zoom})
 
             newest = data[0]
             img = _get_image_url(newest, "border_crop")
             # Fallback, falls border_crop fehlt
             if not img:
                 img = _get_image_url(newest, "large")
-            return JSONResponse({"url": img, "zoom": COMMANDER_BG_ZOOM})
+            return JSONResponse({"url": img, "zoom": _current_settings().ui.commander_bg_zoom})
 
     except Exception:
-        return JSONResponse({"url": None, "zoom": COMMANDER_BG_ZOOM})
+        return JSONResponse({"url": None, "zoom": _current_settings().ui.commander_bg_zoom})
 
 register_ws_routes(
     app,
@@ -1335,7 +1372,7 @@ async def start_pairings(num_pods: int = Form(...), hosts: list[str] = Form(defa
         if not START_FILE_PATH.exists():
             raise HTTPException(status_code=400, detail="Raffle noch nicht gestartet.")
 
-        if not _all_received_confirmed(raffle_list):
+        if _current_settings().require_all_confirmed_before_pairings and not _all_received_confirmed(raffle_list):
             raise HTTPException(status_code=400, detail="Nicht alle Decks wurden bestätigt.")
 
         players = _deckowners(raffle_list)
@@ -1359,7 +1396,7 @@ async def start_pairings(num_pods: int = Form(...), hosts: list[str] = Form(defa
 
         fixed_first = _first_round_with_hosts(players, int(num_pods), host_clean) if host_clean else None
 
-        rounds = _build_rounds(players, int(num_pods), MAX_ROUNDS, fixed_first_round=fixed_first)
+        rounds = _build_rounds(players, int(num_pods), _current_settings().max_rounds, fixed_first_round=fixed_first)
 
         state = {
             "pods": int(num_pods),
