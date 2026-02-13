@@ -969,20 +969,20 @@ body.ccp-page .ccp-card{
 }
 
 .voting-section .report-box{
-  min-height: 280px;
+  min-height: 320px;
 }
 
 .voting-section #votingDecksPool{
-  height:280px;
-  min-height:280px;
-  max-height:280px;
+  height:320px;
+  min-height:320px;
+  max-height:320px;
   overflow-y:auto;
 }
 
 .voting-section .voting-places{
-  height:280px;
-  min-height:280px;
-  max-height:280px;
+  height:320px;
+  min-height:320px;
+  max-height:320px;
 }
 
 .voting-section .voting-places .report-place-slot{
