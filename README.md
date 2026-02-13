@@ -57,6 +57,12 @@ Der Entwicklungs-Endpunkt `/ergebnisse` zeigt pro Deck eine Zeile mit den unten 
 - **Deckratenpunkte**: Werden voter-bezogen aus korrekten Treffer-Zuordnungen gezählt.
 - **Overall**: `game_points + top3_overall_bonus + guess_points`.
 
+
+### `/ergebnisse` als PDF exportieren
+
+- Standard: `GET /ergebnisse` liefert wie bisher die HTML-Tabelle.
+- PDF-Download: `GET /ergebnisse?PDF=true` liefert dieselbe Ergebnistabelle als PDF-Datei (`ergebnisse.pdf`) zum Download.
+
 ## Debug-Automation (`/debug`)
 
 Der Endpoint `/debug` führt die Event-State-Machine automatisiert aus.

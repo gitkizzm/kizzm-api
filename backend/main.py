@@ -1,7 +1,7 @@
 import uvicorn
 import html
 from fastapi import Body, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, StreamingResponse
 from backend.schemas import DeckSchema
 from backend.app_factory import create_app
 from backend.repositories.json_store import atomic_write_json
@@ -73,6 +73,7 @@ from datetime import datetime, timezone
 import pandas as pd
 from random import shuffle, randint, choice
 import time 
+import io
 from collections import OrderedDict
 from urllib.parse import quote_plus, unquote_plus
 import httpx
@@ -2052,8 +2053,7 @@ def _round_rank_by_owner(state: dict, owner: str) -> dict[int, int | None]:
     return ranks
 
 
-@app.get("/ergebnisse", response_class=HTMLResponse)
-async def development_results_overview():
+def _ergebnisse_columns_and_rows() -> tuple[list[str], list[list[str]]]:
     raffle_list = _load_raffle_list()
     state = _load_pairings() or {}
 
@@ -2096,16 +2096,7 @@ async def development_results_overview():
         "calculated.overall_event_points",
     ])
 
-    lines = [
-        "<html><head><meta charset='utf-8'><title>/ergebnisse</title></head><body style='font-family: system-ui; padding: 16px;'>",
-        "<h2>Event-Ergebnisse (Entwicklung)</h2>",
-        "<table border='1' cellspacing='0' cellpadding='6' style='border-collapse: collapse; font-size: 14px;'>",
-        "<thead><tr>",
-    ]
-    for col in columns:
-        lines.append(f"<th>{html.escape(col)}</th>")
-    lines.append("</tr></thead><tbody>")
-
+    rows: list[list[str]] = []
     sorted_entries = sorted(raffle_list, key=lambda e: int(e.get("deck_id") or 0))
     for entry in sorted_entries:
         deck_id = int(entry.get("deck_id") or 0)
@@ -2138,7 +2129,99 @@ async def development_results_overview():
             str(owner_result.get("guess_points") or 0),
             str(owner_result.get("total_points") or 0),
         ])
+        rows.append(row_values)
 
+    return columns, rows
+
+
+@app.get("/ergebnisse", response_class=HTMLResponse)
+async def development_results_overview(PDF: bool = False):
+    columns, rows = _ergebnisse_columns_and_rows()
+
+    if PDF:
+        def _pdf_escape(text: str) -> str:
+            return text.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+
+        def _table_pdf_bytes(table_columns: list[str], table_rows: list[list[str]]) -> bytes:
+            lines = [" | ".join(table_columns)]
+            for row in table_rows:
+                lines.append(" | ".join(row))
+            normalized = [line[:220] for line in lines]
+
+            lines_per_page = 44
+            chunks = [normalized[i:i + lines_per_page] for i in range(0, len(normalized), lines_per_page)]
+            if not chunks:
+                chunks = [["Keine Daten vorhanden."]]
+
+            objects: list[bytes] = []
+
+            # 1: Catalog, 2: Pages, 3: Font
+            objects.append(b"<< /Type /Catalog /Pages 2 0 R >>")
+            objects.append(b"__PAGES_PLACEHOLDER__")
+            objects.append(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
+
+            page_object_ids: list[int] = []
+
+            for chunk in chunks:
+                stream_lines = ["BT", "/F1 8 Tf", "36 560 Td", "12 TL"]
+                for line in chunk:
+                    stream_lines.append(f"({_pdf_escape(line)}) Tj")
+                    stream_lines.append("T*")
+                stream_lines.append("ET")
+                stream_data = "\n".join(stream_lines).encode("latin-1", errors="replace")
+
+                content_obj_id = len(objects) + 1
+                objects.append(
+                    f"<< /Length {len(stream_data)} >>\nstream\n".encode("latin-1")
+                    + stream_data
+                    + b"\nendstream"
+                )
+
+                page_obj_id = len(objects) + 1
+                page_object_ids.append(page_obj_id)
+                page_obj = (
+                    f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 842 595] "
+                    f"/Resources << /Font << /F1 3 0 R >> >> /Contents {content_obj_id} 0 R >>"
+                ).encode("latin-1")
+                objects.append(page_obj)
+
+            kids = " ".join(f"{pid} 0 R" for pid in page_object_ids)
+            objects[1] = f"<< /Type /Pages /Kids [{kids}] /Count {len(page_object_ids)} >>".encode("latin-1")
+
+            out = io.BytesIO()
+            out.write(b"%PDF-1.4\n")
+            offsets = [0]
+            for i, obj in enumerate(objects, start=1):
+                offsets.append(out.tell())
+                out.write(f"{i} 0 obj\n".encode("latin-1"))
+                out.write(obj)
+                out.write(b"\nendobj\n")
+
+            xref_start = out.tell()
+            out.write(f"xref\n0 {len(objects)+1}\n".encode("latin-1"))
+            out.write(b"0000000000 65535 f \n")
+            for i in range(1, len(objects) + 1):
+                out.write(f"{offsets[i]:010d} 00000 n \n".encode("latin-1"))
+            out.write(
+                f"trailer\n<< /Size {len(objects)+1} /Root 1 0 R >>\nstartxref\n{xref_start}\n%%EOF".encode("latin-1")
+            )
+            return out.getvalue()
+
+        pdf_bytes = _table_pdf_bytes(columns, rows)
+        headers = {"Content-Disposition": "attachment; filename=ergebnisse.pdf"}
+        return StreamingResponse(io.BytesIO(pdf_bytes), media_type="application/pdf", headers=headers)
+
+    lines = [
+        "<html><head><meta charset='utf-8'><title>/ergebnisse</title></head><body style='font-family: system-ui; padding: 16px;'>",
+        "<h2>Event-Ergebnisse (Entwicklung)</h2>",
+        "<table border='1' cellspacing='0' cellpadding='6' style='border-collapse: collapse; font-size: 14px;'>",
+        "<thead><tr>",
+    ]
+    for col in columns:
+        lines.append(f"<th>{html.escape(col)}</th>")
+    lines.append("</tr></thead><tbody>")
+
+    for row_values in rows:
         lines.append("<tr>")
         for value in row_values:
             lines.append(f"<td>{html.escape(str(value))}</td>")
