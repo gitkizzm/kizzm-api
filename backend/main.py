@@ -2142,30 +2142,58 @@ async def development_results_overview(PDF: bool = False):
         def _pdf_escape(text: str) -> str:
             return text.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
 
-        def _table_pdf_bytes(table_columns: list[str], table_rows: list[list[str]]) -> bytes:
-            page_w, page_h = 842.0, 595.0  # A4 landscape in points
+        def _wrap_text(value: str, width: float) -> list[str]:
+            text = str(value or "")
+            if not text:
+                return [""]
+            char_w = 3.6  # approx for Helvetica 7pt
+            max_chars = max(1, int((width - 6.0) / char_w))
+            out: list[str] = []
+            for raw_line in text.splitlines() or [""]:
+                words = raw_line.split(" ")
+                current = ""
+                for word in words:
+                    if not current:
+                        candidate = word
+                    else:
+                        candidate = current + " " + word
+
+                    if len(candidate) <= max_chars:
+                        current = candidate
+                        continue
+
+                    if current:
+                        out.append(current)
+                        current = ""
+
+                    while len(word) > max_chars:
+                        out.append(word[:max_chars])
+                        word = word[max_chars:]
+                    current = word
+                out.append(current)
+            return out or [""]
+
+        def _table_pdf_bytes(header_row: list[str], body_rows: list[list[str]]) -> bytes:
+            page_w, page_h = 595.0, 842.0  # A4 portrait
             margin = 20.0
-            row_h = 14.0
             font_size = 7.0
+            line_h = 9.0
 
-            ncols = max(1, len(table_columns))
+            ncols = max(1, len(header_row))
             usable_w = max(100.0, page_w - (2 * margin))
-            col_w = usable_w / ncols
 
-            max_table_rows_per_page = max(2, int((page_h - (2 * margin)) // row_h))
-            body_rows_per_page = max(1, max_table_rows_per_page - 1)  # minus header row
+            # adaptive column widths based on textual width, then scaled to fit page width
+            raw_widths = []
+            for c in range(ncols):
+                max_len = len(str(header_row[c] if c < len(header_row) else ""))
+                for row in body_rows:
+                    max_len = max(max_len, len(str(row[c] if c < len(row) else "")))
+                raw_widths.append(min(max(28.0, max_len * 3.2 + 8.0), 190.0))
 
-            if not table_rows:
-                chunks: list[list[list[str]]] = [[]]
-            else:
-                chunks = [
-                    table_rows[i:i + body_rows_per_page]
-                    for i in range(0, len(table_rows), body_rows_per_page)
-                ]
+            width_sum = sum(raw_widths) or 1.0
+            col_widths = [(w / width_sum) * usable_w for w in raw_widths]
 
             objects: list[bytes] = []
-
-            # 1: Catalog, 2: Pages, 3: Font normal, 4: Font bold
             objects.append(b"<< /Type /Catalog /Pages 2 0 R >>")
             objects.append(b"__PAGES_PLACEHOLDER__")
             objects.append(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
@@ -2173,37 +2201,53 @@ async def development_results_overview(PDF: bool = False):
 
             page_object_ids: list[int] = []
 
-            def _fit_cell_text(value: str, width: float) -> str:
-                char_w = 4.0
-                max_chars = max(1, int((width - 4.0) // char_w))
-                if len(value) <= max_chars:
-                    return value
-                if max_chars <= 1:
-                    return value[:1]
-                return value[: max_chars - 1] + "…"
+            def _prepare_row(row: list[str]) -> tuple[list[list[str]], float]:
+                wrapped_cells: list[list[str]] = []
+                max_lines = 1
+                for i in range(ncols):
+                    val = str(row[i] if i < len(row) else "")
+                    lines = _wrap_text(val, col_widths[i])
+                    wrapped_cells.append(lines)
+                    max_lines = max(max_lines, len(lines))
+                row_h = (max_lines * line_h) + 4.0
+                return wrapped_cells, row_h
 
-            for chunk in chunks:
+            prepared_header, header_h = _prepare_row(header_row)
+            prepared_body = [_prepare_row(r) for r in body_rows]
+
+            idx = 0
+            while idx < len(prepared_body) or (len(prepared_body) == 0 and idx == 0):
                 stream_ops: list[str] = []
-                y_top = page_h - margin
+                y_cursor = page_h - margin
 
-                page_rows = [table_columns] + chunk
-                for row_idx, row_data in enumerate(page_rows):
-                    y_cell = y_top - ((row_idx + 1) * row_h)
-                    for col_idx in range(ncols):
-                        x_cell = margin + (col_idx * col_w)
+                def _draw_row(prepared: list[list[str]], row_h: float, bold: bool) -> None:
+                    nonlocal y_cursor
+                    y_bottom = y_cursor - row_h
+                    x = margin
+                    for col_idx, lines in enumerate(prepared):
+                        w = col_widths[col_idx]
+                        stream_ops.append(f"{x:.2f} {y_bottom:.2f} {w:.2f} {row_h:.2f} re S")
+                        font_name = "/F2" if bold else "/F1"
+                        for li, line in enumerate(lines):
+                            text_x = x + 3.0
+                            text_y = y_cursor - 10.0 - (li * line_h)
+                            stream_ops.append(
+                                f"BT {font_name} {font_size:.1f} Tf 1 0 0 1 {text_x:.2f} {text_y:.2f} Tm ({_pdf_escape(line)}) Tj ET"
+                            )
+                        x += w
+                    y_cursor = y_bottom
 
-                        # Draw cell rectangle
-                        stream_ops.append(f"{x_cell:.2f} {y_cell:.2f} {col_w:.2f} {row_h:.2f} re S")
+                _draw_row(prepared_header, header_h, bold=True)
 
-                        raw_val = row_data[col_idx] if col_idx < len(row_data) else ""
-                        text = _fit_cell_text(str(raw_val), col_w)
-
-                        font_name = "/F2" if row_idx == 0 else "/F1"
-                        text_x = x_cell + 2.0
-                        text_y = y_cell + 4.0
-                        stream_ops.append(
-                            f"BT {font_name} {font_size:.1f} Tf 1 0 0 1 {text_x:.2f} {text_y:.2f} Tm ({_pdf_escape(text)}) Tj ET"
-                        )
+                if len(prepared_body) == 0:
+                    idx = 1
+                else:
+                    while idx < len(prepared_body):
+                        row_prepared, row_h = prepared_body[idx]
+                        if (y_cursor - row_h) < margin:
+                            break
+                        _draw_row(row_prepared, row_h, bold=False)
+                        idx += 1
 
                 stream_data = "\n".join(stream_ops).encode("latin-1", errors="replace")
 
@@ -2221,6 +2265,9 @@ async def development_results_overview(PDF: bool = False):
                     f"/Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents {content_obj_id} 0 R >>"
                 ).encode("latin-1")
                 objects.append(page_obj)
+
+                if len(prepared_body) == 0:
+                    break
 
             kids = " ".join(f"{pid} 0 R" for pid in page_object_ids)
             objects[1] = f"<< /Type /Pages /Kids [{kids}] /Count {len(page_object_ids)} >>".encode("latin-1")
@@ -2244,7 +2291,23 @@ async def development_results_overview(PDF: bool = False):
             )
             return out.getvalue()
 
-        pdf_bytes = _table_pdf_bytes(columns, rows)
+        # Transpose for PDF readability: columns become row labels.
+        row_labels = [
+            (str(r[0]).strip() or f"row_{i+1}") if isinstance(r, list) and len(r) > 0 else f"row_{i+1}"
+            for i, r in enumerate(rows)
+        ]
+        transposed_header = ["field"] + row_labels
+        transposed_rows: list[list[str]] = []
+        for col_idx, col_name in enumerate(columns):
+            transposed_rows.append([
+                col_name,
+                *[
+                    (str(r[col_idx]) if col_idx < len(r) else "")
+                    for r in rows
+                ],
+            ])
+
+        pdf_bytes = _table_pdf_bytes(transposed_header, transposed_rows)
         headers = {"Content-Disposition": "attachment; filename=ergebnisse.pdf"}
         return StreamingResponse(io.BytesIO(pdf_bytes), media_type="application/pdf", headers=headers)
 
