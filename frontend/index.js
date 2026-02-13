@@ -865,11 +865,12 @@ async function ensureCardPreviewLoaded(){
     if(!bestDeckVotingState || !votingDecksPoolEl || !votingPlacesEl) return;
 
     const isPublished = bestDeckVotingState.votingKind === 'results_published';
+    const isWaitingResults = bestDeckVotingState.votingKind === 'waiting_results';
     const votingLayoutEl = bestDeckVotingRootEl?.querySelector('.voting-layout');
 
     renderVotingResults(isPublished ? bestDeckVotingState.results : null);
-    if(isPublished){
-      setVotingHint('');
+    if(isPublished || isWaitingResults){
+      if(isPublished) setVotingHint('');
       votingDecksPoolEl.innerHTML = '';
       votingPlacesEl.innerHTML = '';
       if(votingLayoutEl) votingLayoutEl.style.display = 'none';
@@ -1056,7 +1057,8 @@ async function ensureCardPreviewLoaded(){
       { id: '2', label: 'Rang 2' },
       { id: '3', label: 'Rang 3' },
     ];
-    const places = shuffleList(placesRaw);
+    const votingKind = String(data.voting_kind || 'top3_fixed').trim();
+    const places = votingKind === 'deck_creator_guess' ? shuffleList(placesRaw) : placesRaw;
     const placements = {};
     for(const place of places){
       const placeId = String(place?.id || '').trim();
@@ -1065,7 +1067,7 @@ async function ensureCardPreviewLoaded(){
     }
 
     bestDeckVotingState = {
-      votingKind: String(data.voting_kind || 'top3_fixed').trim(),
+      votingKind,
       candidates: shuffleList(data.candidates || []),
       places,
       placements,
