@@ -685,6 +685,7 @@ def _debug_detect_phase(start_file_exists: bool, raffle_list: list[dict], pair_s
       - confirm_needed
       - pairings_start_needed
       - next_round_or_end_needed
+      - voting_needed
       - idle
     """
     if not start_file_exists:
@@ -704,8 +705,114 @@ def _debug_detect_phase(start_file_exists: bool, raffle_list: list[dict], pair_s
     phase = (pair_state.get("phase") or "").strip().lower()
     if phase == "playing":
         return "next_round_or_end_needed"
+    if phase == "voting":
+        return "voting_needed"
 
     return "idle"
+
+
+def _debug_complete_voting_and_publish_in_memory(raffle_list: list[dict], state: dict) -> dict:
+    """
+    Completes missing voting steps for all players and publishes results.
+
+    Behavior:
+      - Fill missing Top-3 votes with random valid deck choices.
+      - Fill missing deck-creator guess mappings with a random full assignment.
+      - Publish voting results once all players have both votes.
+
+    Assumes RAFFLE_LOCK is held by caller and state.phase == "voting".
+    """
+    if (state.get("phase") or "").strip().lower() != "voting":
+        return {"ok": True, "action": "noop", "message": "Voting-Phase ist nicht aktiv."}
+
+    if _published_voting_results(state):
+        return {
+            "ok": True,
+            "action": "noop",
+            "message": "Voting-Ergebnisse wurden bereits veröffentlicht.",
+            "phase": "voting",
+        }
+
+    owners = sorted({(e.get("deckOwner") or "").strip() for e in raffle_list if (e.get("deckOwner") or "").strip()})
+    top3_votes = _best_deck_votes_bucket(state)
+    deckraten_votes = _deck_creator_guess_votes_bucket(state)
+
+    top3_filled_for: list[int] = []
+    deckraten_filled_for: list[int] = []
+
+    for owner in owners:
+        owner_entry = next((e for e in raffle_list if (e.get("deckOwner") or "").strip() == owner), None)
+        owner_deck_id = int((owner_entry or {}).get("deck_id") or 0)
+        if owner_deck_id <= 0:
+            continue
+
+        key = str(owner_deck_id)
+        candidates = _best_deck_candidates_for_owner(raffle_list, owner)
+        candidate_ids = [int(item.get("deck_id") or 0) for item in candidates if int(item.get("deck_id") or 0) > 0]
+
+        if not top3_votes.get(key) and len(candidate_ids) >= 3:
+            shuffled_ids = list(candidate_ids)
+            shuffle(shuffled_ids)
+            top3_votes[key] = {
+                "1": shuffled_ids[0],
+                "2": shuffled_ids[1],
+                "3": shuffled_ids[2],
+                "voted_by": owner,
+                "submitted_at": datetime.now(timezone.utc).isoformat(),
+            }
+            top3_filled_for.append(owner_deck_id)
+
+        if not deckraten_votes.get(key) and candidate_ids:
+            creator_ids = [str(item.get("deckersteller") or "").strip() for item in candidates]
+            creator_ids = [creator for creator in creator_ids if creator]
+            assigned_ids = list(candidate_ids)
+            shuffle(assigned_ids)
+            mapping = {creator: deck_id for creator, deck_id in zip(creator_ids, assigned_ids)}
+            deckraten_votes[key] = {
+                **mapping,
+                "voted_by": owner,
+                "submitted_at": datetime.now(timezone.utc).isoformat(),
+            }
+            deckraten_filled_for.append(owner_deck_id)
+
+    pending_voters: list[int] = []
+    for owner in owners:
+        owner_entry = next((e for e in raffle_list if (e.get("deckOwner") or "").strip() == owner), None)
+        owner_deck_id = int((owner_entry or {}).get("deck_id") or 0)
+        if owner_deck_id <= 0:
+            continue
+        key = str(owner_deck_id)
+        if not top3_votes.get(key) or not deckraten_votes.get(key):
+            pending_voters.append(owner_deck_id)
+
+    if pending_voters:
+        _atomic_write_pairings(state)
+        return {
+            "ok": True,
+            "action": "filled_missing_voting_participants",
+            "phase": "voting",
+            "top3_filled_for": sorted(top3_filled_for),
+            "deckraten_filled_for": sorted(deckraten_filled_for),
+            "pending_voters": sorted(pending_voters),
+            "published": False,
+        }
+
+    results = _calculate_voting_results(raffle_list, state)
+    bucket = _votes_results_bucket(state)
+    bucket["published"] = True
+    bucket["published_at"] = datetime.now(timezone.utc).isoformat()
+    bucket["data"] = results
+    _atomic_write_pairings(state)
+
+    return {
+        "ok": True,
+        "action": "completed_voting_and_published_results",
+        "phase": "voting",
+        "top3_filled_for": sorted(top3_filled_for),
+        "deckraten_filled_for": sorted(deckraten_filled_for),
+        "pending_voters": [],
+        "published": True,
+    }
 
 
 def _debug_start_raffle_in_memory(raffle_list: list[dict]) -> dict:
@@ -1047,13 +1154,22 @@ async def _debug_apply_step() -> dict:
             return result
 
         # -------------------------
+        # Phase 5: Complete voting + publish results
+        # -------------------------
+        if phase == "voting_needed":
+            st = _load_pairings() or {}
+            result = _debug_complete_voting_and_publish_in_memory(raffle_list, st)
+            result["phase"] = phase
+            return result
+
+        # -------------------------
         # Idle (nothing to do yet)
         # -------------------------
         return {
             "ok": True,
             "phase": phase,
             "action": "noop",
-            "message": "Kein weiterer Debug-Schritt definiert (aktuell: Registrierung → Raffle-Start → Bestätigen → Pairings/Runden → Voting).",
+            "message": "Kein weiterer Debug-Schritt definiert (aktuell: Registrierung → Raffle-Start → Bestätigen → Pairings/Runden → Voting → Ergebnisveröffentlichung).",
         }
 
 
