@@ -2134,9 +2134,28 @@ def _ergebnisse_columns_and_rows() -> tuple[list[str], list[list[str]]]:
     return columns, rows
 
 
+def _transpose_ergebnisse_table(columns: list[str], rows: list[list[str]]) -> tuple[list[str], list[list[str]]]:
+    row_labels = [
+        (str(r[0]).strip() or f"row_{i+1}") if isinstance(r, list) and len(r) > 0 else f"row_{i+1}"
+        for i, r in enumerate(rows)
+    ]
+    transposed_header = ["field"] + row_labels
+    transposed_rows: list[list[str]] = []
+    for col_idx, col_name in enumerate(columns):
+        transposed_rows.append([
+            col_name,
+            *[
+                (str(r[col_idx]) if col_idx < len(r) else "")
+                for r in rows
+            ],
+        ])
+    return transposed_header, transposed_rows
+
+
 @app.get("/ergebnisse", response_class=HTMLResponse)
 async def development_results_overview(PDF: bool = False):
     columns, rows = _ergebnisse_columns_and_rows()
+    columns, rows = _transpose_ergebnisse_table(columns, rows)
 
     if PDF:
         def _pdf_escape(text: str) -> str:
@@ -2291,23 +2310,7 @@ async def development_results_overview(PDF: bool = False):
             )
             return out.getvalue()
 
-        # Transpose for PDF readability: columns become row labels.
-        row_labels = [
-            (str(r[0]).strip() or f"row_{i+1}") if isinstance(r, list) and len(r) > 0 else f"row_{i+1}"
-            for i, r in enumerate(rows)
-        ]
-        transposed_header = ["field"] + row_labels
-        transposed_rows: list[list[str]] = []
-        for col_idx, col_name in enumerate(columns):
-            transposed_rows.append([
-                col_name,
-                *[
-                    (str(r[col_idx]) if col_idx < len(r) else "")
-                    for r in rows
-                ],
-            ])
-
-        pdf_bytes = _table_pdf_bytes(transposed_header, transposed_rows)
+        pdf_bytes = _table_pdf_bytes(columns, rows)
         headers = {"Content-Disposition": "attachment; filename=ergebnisse.pdf"}
         return StreamingResponse(io.BytesIO(pdf_bytes), media_type="application/pdf", headers=headers)
 

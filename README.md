@@ -60,9 +60,9 @@ Der Entwicklungs-Endpunkt `/ergebnisse` zeigt pro Deck eine Zeile mit den unten 
 
 ### `/ergebnisse` als PDF exportieren
 
-- Standard: `GET /ergebnisse` liefert wie bisher die HTML-Tabelle.
+- Standard: `GET /ergebnisse` liefert die Ergebnistabelle als **transponierte HTML-Tabelle** (Spaltennamen als erste Spalte/Index).
 - PDF-Download: `GET /ergebnisse?PDF=true` liefert die Ergebnistabelle als PDF-Datei (`ergebnisse.pdf`) zum Download.
-- Für bessere Lesbarkeit wird die Tabelle im PDF **transponiert** (Spaltennamen werden zur ersten Spalte/Index), im **Portrait-Format** gerendert, mit **Zeilenumbrüchen in Zellen** sowie **automatischen Seitenumbrüchen**.
+- Für bessere Lesbarkeit wird die Tabelle im PDF ebenfalls **transponiert** (Spaltennamen werden zur ersten Spalte/Index), im **Portrait-Format** gerendert, mit **Zeilenumbrüchen in Zellen** sowie **automatischen Seitenumbrüchen**.
 
 ## Debug-Automation (`/debug`)
 
