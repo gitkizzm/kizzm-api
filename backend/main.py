@@ -628,6 +628,21 @@ async def success_page(request: Request):
     """
     return templates.TemplateResponse("success.html", {"request": request})
 
+async def _clear_event_data_in_memory() -> None:
+    # Löschen von raffle.json, falls sie existiert
+    if FILE_PATH.exists():
+        FILE_PATH.unlink()
+    # Löschen von start.txt, falls sie existiert
+    if START_FILE_PATH.exists():
+        START_FILE_PATH.unlink()
+    # Löschen von pairings.json, falls sie existiert
+    if PAIRINGS_PATH.exists():
+        PAIRINGS_PATH.unlink()
+    # Erstellen einer leeren raffle.json
+    with FILE_PATH.open("w", encoding="utf-8") as f:
+        json.dump([], f, ensure_ascii=False, indent=4)
+
+
 @app.post("/clear")
 async def clear_data():
     """
@@ -635,24 +650,14 @@ async def clear_data():
     Leitet den Benutzer anschließend zurück zum CCP.
     """
     try:
-        # Löschen von raffle.json, falls sie existiert
-        if FILE_PATH.exists():
-            FILE_PATH.unlink()
-        # Löschen von start.txt, falls sie existiert
-        if START_FILE_PATH.exists():
-            START_FILE_PATH.unlink()
-        # Löschen von pairings.json, falls sie existiert
-        if PAIRINGS_PATH.exists():
-            PAIRINGS_PATH.unlink()
-        # Erstellen einer leeren raffle.json
-        with FILE_PATH.open("w", encoding="utf-8") as f:
-            json.dump([], f, ensure_ascii=False, indent=4)
+        async with RAFFLE_LOCK:
+            await _clear_event_data_in_memory()
 
         await notify_state_change()
 
         # Weiterleitung zurück zum Customer Control Panel
         return RedirectResponse(url="/CCP", status_code=303)
-    
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Fehler beim Löschen der Dateien: {e}")
 
@@ -710,6 +715,62 @@ def _debug_detect_phase(start_file_exists: bool, raffle_list: list[dict], pair_s
         return "voting_needed"
 
     return "idle"
+
+
+_DEBUG_TERMINAL_STEP = 9
+
+
+def _debug_current_step_index(start_file_exists: bool, raffle_list: list[dict], pair_state: dict | None) -> int:
+    """
+    Returns the current sequential debug step index.
+
+    Step model:
+      0 = event reset / before registration helper run
+      1 = registrations prepared
+      2 = raffle started
+      3 = all decks confirmed
+      4 = pairings started (round 1)
+      5 = round 2 started
+      6 = round 3 started
+      7 = round 4 started
+      8 = voting phase reached
+      9 = voting results published
+    """
+    if not start_file_exists:
+        return 1 if _debug_has_minimal_registrations(raffle_list, min_decks=_current_settings().min_decks_to_start) else 0
+
+    if not _all_received_confirmed(raffle_list):
+        return 2
+
+    if not pair_state:
+        return 3
+
+    phase = (pair_state.get("phase") or "").strip().lower()
+    active_round = int(pair_state.get("active_round") or 0)
+
+    if phase == "playing":
+        if active_round <= 1:
+            return 4
+        if active_round == 2:
+            return 5
+        if active_round == 3:
+            return 6
+        if active_round == 4:
+            return 7
+        return 8
+
+    if phase == "voting":
+        return 9 if _published_voting_results(pair_state) else 8
+
+    return 9 if _published_voting_results(pair_state) else 8
+
+
+def _debug_read_current_step_index() -> int:
+    return _debug_current_step_index(
+        START_FILE_PATH.exists(),
+        _load_raffle_list(),
+        _load_pairings(),
+    )
 
 
 def _debug_complete_voting_and_publish_in_memory(raffle_list: list[dict], state: dict) -> dict:
@@ -1174,7 +1235,90 @@ async def _debug_apply_step() -> dict:
         }
 
 
-register_debug_routes(app, _debug_apply_step, notify_state_change)
+async def _debug_apply_step_with_skip(skip_to: int | None = None) -> dict:
+    if skip_to is None:
+        result = await _debug_apply_step()
+        result["current_step"] = _debug_read_current_step_index()
+        return result
+
+    if skip_to not in (-1, 0) and skip_to <= 0:
+        raise HTTPException(status_code=400, detail="skip_to muss > 0 sein oder die Sonderwerte 0/-1 verwenden.")
+
+    if skip_to == 0:
+        async with RAFFLE_LOCK:
+            await _clear_event_data_in_memory()
+        return {
+            "ok": True,
+            "action": "reset_to_start",
+            "skip_to": 0,
+            "current_step": _debug_read_current_step_index(),
+            "phase": "registration_needed",
+            "message": "Event wurde zurückgesetzt (entspricht /clear).",
+        }
+
+    target = _DEBUG_TERMINAL_STEP if skip_to == -1 else int(skip_to)
+    if target > _DEBUG_TERMINAL_STEP:
+        raise HTTPException(status_code=400, detail=f"skip_to darf maximal {_DEBUG_TERMINAL_STEP} sein (oder -1).")
+
+    current_step = _debug_read_current_step_index()
+    if current_step >= target:
+        return {
+            "ok": True,
+            "action": "skip_to_noop",
+            "skip_to": skip_to,
+            "current_step": current_step,
+            "phase": _debug_detect_phase(START_FILE_PATH.exists(), _load_raffle_list(), _load_pairings()),
+            "message": "skip_to erlaubt nur Vorwärtssprünge. Zielschritt ist bereits erreicht oder überschritten.",
+        }
+
+    last_result: dict = {
+        "ok": True,
+        "action": "skip_to_started",
+        "phase": _debug_detect_phase(START_FILE_PATH.exists(), _load_raffle_list(), _load_pairings()),
+    }
+
+    max_iterations = 64
+    for _ in range(max_iterations):
+        before = _debug_read_current_step_index()
+        if before >= target:
+            break
+
+        last_result = await _debug_apply_step()
+        after = _debug_read_current_step_index()
+
+        if after >= target:
+            break
+
+        # safety break to avoid endless loops if a noop/non-progress state is reached
+        if after <= before and last_result.get("action") == "noop":
+            break
+
+    final_step = _debug_read_current_step_index()
+    phase = _debug_detect_phase(START_FILE_PATH.exists(), _load_raffle_list(), _load_pairings())
+    if final_step >= target:
+        return {
+            **last_result,
+            "ok": True,
+            "action": "skip_to_reached",
+            "skip_to": skip_to,
+            "target_step": target,
+            "current_step": final_step,
+            "phase": phase,
+        }
+
+    return {
+        **last_result,
+        "ok": True,
+        "action": "skip_to_stopped",
+        "skip_to": skip_to,
+        "target_step": target,
+        "current_step": final_step,
+        "phase": phase,
+        "message": "skip_to konnte nicht vollständig ausgeführt werden (kein weiterer Fortschritt möglich).",
+    }
+
+
+register_debug_routes(app, _debug_apply_step_with_skip, notify_state_change)
 
 @app.get("/CCP", response_class=HTMLResponse)
 async def customer_control_panel(request: Request):

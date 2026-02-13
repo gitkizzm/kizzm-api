@@ -55,3 +55,32 @@ Der Entwicklungs-Endpunkt `/ergebnisse` zeigt pro Deck eine Zeile mit den unten 
 - **Deckratenpunkte**: Werden voter-bezogen aus korrekten Treffer-Zuordnungen gezählt.
 - **Overall**: `game_points + top3_overall_bonus + guess_points`.
 
+## Debug-Automation (`/debug`)
+
+Der Endpoint `/debug` führt die Event-State-Machine automatisiert aus.
+
+### Nutzung
+
+- `GET /debug` oder `POST /debug`: führt **genau einen** nächsten sinnvollen Schritt aus.
+- `GET /debug?skip_to=<n>` oder `POST /debug?skip_to=<n>`: springt nur **vorwärts** bis zum Zielschritt.
+- Zulässige Werte für `skip_to`:
+  - `1..9`: springt bis zu diesem Schrittindex.
+  - `0`: führt intern ein Reset aus (entspricht `/clear`).
+  - `-1`: springt bis ans Ende (Ergebnisse veröffentlicht, Schritt `9`).
+
+Wenn das Ziel bereits erreicht ist, liefert `/debug?skip_to=<n>` einen No-Op (kein Rücksprung).
+
+### Event-Schritte der Debug-State-Machine
+
+| Schritt-Nr. (`skip_to`) | Schrittname (interner Zustand) | Kurzbeschreibung |
+|---|---|---|
+| `0` | `reset_to_start` | Sonderfall: Eventdaten werden zurückgesetzt (`raffle.json`, `start.txt`, `pairings.json`). |
+| `1` | `registration_prepared` | Test-Registrierungen sind vorhanden (mind. erforderliche Decks). |
+| `2` | `raffle_started` | Raffle wurde gestartet, Decks wurden Besitzern zugewiesen. |
+| `3` | `all_confirmed` | Alle registrierten Decks sind als erhalten bestätigt. |
+| `4` | `pairings_round_1_started` | Pairings gestartet, aktive Runde ist 1. |
+| `5` | `pairings_round_2_started` | Runde 2 läuft. |
+| `6` | `pairings_round_3_started` | Runde 3 läuft. |
+| `7` | `pairings_round_4_started` | Runde 4 läuft. |
+| `8` | `voting_phase` | Spielphase beendet, Voting-Phase erreicht (Ergebnisse noch nicht veröffentlicht). |
+| `9` | `voting_results_published` | Voting abgeschlossen und Ergebnisdaten veröffentlicht. |
