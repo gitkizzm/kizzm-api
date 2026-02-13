@@ -45,6 +45,7 @@ Der Entwicklungs-Endpunkt `/ergebnisse` zeigt pro Deck eine Zeile mit den unten 
 | `calculated.top3_received_vote_points` | Berechnet aus allen Top-3-Votes (`#1=3`, `#2=2`, `#3=1`) | Laufzeitberechnung für `/ergebnisse` (nicht persistiert) | Summe der erhaltenen Punkte eines Decks im Top-3-Voting. |
 | `calculated.top3_received_rank` | Sortierung nach `calculated.top3_received_vote_points` (absteigend, Tie-Break über `deck_id`) | Laufzeitberechnung für `/ergebnisse` (nicht persistiert) | Platzierung eines Decks im Top-3-Voting. |
 | `deck_creator_guess_votes.{deck_id}` | Voting-Eingabe eines Deck-Owners im Deckraten | `pairings.json` unter `deck_creator_guess_votes` | Mapping *Deckersteller → vermutete Deck-ID* für einen Voter. |
+| `calculated.round_phase_points` | Summe der Rundenpunkte aus allen erfassten `resolved_places` (`1→4`, `2→3`, `3→2`, `4→1`) | Bereits in `pairings.json -> voting_results.data.rows[].game_points` nach Publish, sonst Laufzeitberechnung | Gesamtpunkte eines Spielers nur aus der Rundenphase. |
 | `calculated.deck_creator_guess_points` | +1 pro korrekter Zuordnung im Deckraten | Bereits in `pairings.json -> voting_results.data.rows[].guess_points` nach Publish, sonst Laufzeitberechnung | Erhaltene Punkte eines Spielers im Deckraten. |
 | `calculated.overall_event_points` | Summe aus Spielpunkten + Top3-Bonus + Deckratenpunkten | Bereits in `pairings.json -> voting_results.data.rows[].total_points` nach Publish, sonst Laufzeitberechnung | Gesamtpunktzahl eines Spielers im Event. |
 

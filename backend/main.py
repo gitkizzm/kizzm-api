@@ -2087,6 +2087,7 @@ async def development_results_overview():
         "calculated.top3_received_vote_points",
         "calculated.top3_received_rank",
         "deck_creator_guess_votes.{deck_id}",
+        "calculated.round_phase_points",
         "calculated.deck_creator_guess_points",
         "calculated.overall_event_points",
     ])
@@ -2128,6 +2129,7 @@ async def development_results_overview():
             str(top3_points_by_deck.get(deck_id, 0)),
             str(top3_rank_by_deck.get(deck_id, "")),
             "" if not deckrate_vote else json.dumps(deckrate_vote, ensure_ascii=False, sort_keys=True),
+            str(owner_result.get("game_points") or 0),
             str(owner_result.get("guess_points") or 0),
             str(owner_result.get("total_points") or 0),
         ])
