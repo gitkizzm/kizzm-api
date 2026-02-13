@@ -847,7 +847,16 @@ async function ensureCardPreviewLoaded(){
       if(!numericDeckId || !zone || !bestDeckVotingState) return;
 
       const targetPlace = String(zone.dataset.place || '').trim();
-      const normalizedSourcePlace = String(sourcePlace || '').trim();
+
+      let inferredSourcePlace = '';
+      for(const place of ['1','2','3']){
+        if(Number(bestDeckVotingState.placements?.[place] || 0) === numericDeckId){
+          inferredSourcePlace = place;
+          break;
+        }
+      }
+
+      const normalizedSourcePlace = String(sourcePlace || inferredSourcePlace || '').trim();
       const sourceIsRank = isRankPlace(normalizedSourcePlace);
       const targetIsRank = isRankPlace(targetPlace);
       const targetCurrentDeckId = targetIsRank ? (Number(bestDeckVotingState.placements?.[targetPlace] || 0) || null) : null;
@@ -882,6 +891,10 @@ async function ensureCardPreviewLoaded(){
         if(!deckId) return;
         dragFromPlace = chip.closest('.report-dropzone')?.dataset?.place || null;
         ev.dataTransfer?.setData('text/plain', deckId);
+      });
+
+      chip.addEventListener('dragend', () => {
+        dragFromPlace = null;
       });
 
       chip.addEventListener('touchstart', () => {
