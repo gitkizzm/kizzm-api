@@ -1,4 +1,5 @@
 import uvicorn
+import html
 from fastapi import Body, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
 from backend.schemas import DeckSchema
@@ -1859,6 +1860,142 @@ def _calculate_voting_results(raffle_list: list[dict], state: dict) -> dict:
         "rows": rows,
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+def _top3_points_and_rank_by_deck(state: dict) -> tuple[dict[int, int], dict[int, int]]:
+    top3_votes = (state.get("best_deck_votes") or {}) if isinstance(state, dict) else {}
+    points_by_deck: dict[int, int] = {}
+    for vote in top3_votes.values():
+        if not isinstance(vote, dict):
+            continue
+        for place, pts in (("1", 3), ("2", 2), ("3", 1)):
+            try:
+                deck_id = int(vote.get(place) or 0)
+            except (TypeError, ValueError):
+                deck_id = 0
+            if deck_id > 0:
+                points_by_deck[deck_id] = points_by_deck.get(deck_id, 0) + pts
+
+    ranking = sorted(points_by_deck.items(), key=lambda x: (-x[1], x[0]))
+    rank_by_deck = {deck_id: rank for rank, (deck_id, _pts) in enumerate(ranking, start=1)}
+    return points_by_deck, rank_by_deck
+
+
+def _round_rank_by_owner(state: dict, owner: str) -> dict[int, int | None]:
+    reports = (state.get("round_reports") or {}) if isinstance(state, dict) else {}
+    ranks: dict[int, int | None] = {}
+    for round_key, round_reports in reports.items():
+        try:
+            round_no = int(round_key)
+        except (TypeError, ValueError):
+            continue
+        rank_value = None
+        if isinstance(round_reports, dict):
+            for report in round_reports.values():
+                resolved = (report or {}).get("resolved_places") or {}
+                if not isinstance(resolved, dict):
+                    continue
+                if owner in resolved:
+                    try:
+                        rank_value = int(resolved.get(owner))
+                    except (TypeError, ValueError):
+                        rank_value = None
+                    break
+        ranks[round_no] = rank_value
+    return ranks
+
+
+@app.get("/ergebnisse", response_class=HTMLResponse)
+async def development_results_overview():
+    raffle_list = _load_raffle_list()
+    state = _load_pairings() or {}
+
+    voting_results = _calculate_voting_results(raffle_list, state)
+    row_by_owner = {
+        str(row.get("player") or "").strip(): row
+        for row in (voting_results.get("rows") or [])
+        if isinstance(row, dict)
+    }
+    top3_points_by_deck, top3_rank_by_deck = _top3_points_and_rank_by_deck(state)
+    best_deck_votes = (state.get("best_deck_votes") or {}) if isinstance(state, dict) else {}
+    deck_creator_guess_votes = (state.get("deck_creator_guess_votes") or {}) if isinstance(state, dict) else {}
+
+    max_rounds = int(state.get("active_round") or 0) if isinstance(state, dict) else 0
+    for round_key in ((state.get("round_reports") or {}) if isinstance(state, dict) else {}).keys():
+        try:
+            max_rounds = max(max_rounds, int(round_key))
+        except (TypeError, ValueError):
+            pass
+
+    columns = [
+        "deck_id",
+        "deckersteller",
+        "deckOwner",
+        "commander",
+        "commander2",
+    ]
+    for round_no in range(1, max_rounds + 1):
+        columns.append(f"round_reports.{round_no}.resolved_places[deckOwner]")
+    columns.extend([
+        "best_deck_votes.{deck_id}.1",
+        "best_deck_votes.{deck_id}.2",
+        "best_deck_votes.{deck_id}.3",
+        "calculated.top3_received_vote_points",
+        "calculated.top3_received_rank",
+        "deck_creator_guess_votes.{deck_id}",
+        "calculated.deck_creator_guess_points",
+        "calculated.overall_event_points",
+    ])
+
+    lines = [
+        "<html><head><meta charset='utf-8'><title>/ergebnisse</title></head><body style='font-family: system-ui; padding: 16px;'>",
+        "<h2>Event-Ergebnisse (Entwicklung)</h2>",
+        "<table border='1' cellspacing='0' cellpadding='6' style='border-collapse: collapse; font-size: 14px;'>",
+        "<thead><tr>",
+    ]
+    for col in columns:
+        lines.append(f"<th>{html.escape(col)}</th>")
+    lines.append("</tr></thead><tbody>")
+
+    sorted_entries = sorted(raffle_list, key=lambda e: int(e.get("deck_id") or 0))
+    for entry in sorted_entries:
+        deck_id = int(entry.get("deck_id") or 0)
+        owner = (entry.get("deckOwner") or "").strip()
+        round_ranks = _round_rank_by_owner(state, owner)
+        top3_vote = (best_deck_votes.get(str(deck_id)) or {}) if deck_id > 0 else {}
+        deckrate_vote = (deck_creator_guess_votes.get(str(deck_id)) or {}) if deck_id > 0 else {}
+        owner_result = row_by_owner.get(owner, {})
+
+        row_values: list[str] = [
+            str(deck_id) if deck_id > 0 else "",
+            str(entry.get("deckersteller") or ""),
+            owner,
+            str(entry.get("commander") or ""),
+            str(entry.get("commander2") or ""),
+        ]
+        for round_no in range(1, max_rounds + 1):
+            value = round_ranks.get(round_no)
+            row_values.append("" if value is None else str(value))
+
+        row_values.extend([
+            "" if not top3_vote else str(top3_vote.get("1") or ""),
+            "" if not top3_vote else str(top3_vote.get("2") or ""),
+            "" if not top3_vote else str(top3_vote.get("3") or ""),
+            str(top3_points_by_deck.get(deck_id, 0)),
+            str(top3_rank_by_deck.get(deck_id, "")),
+            "" if not deckrate_vote else json.dumps(deckrate_vote, ensure_ascii=False, sort_keys=True),
+            str(owner_result.get("guess_points") or 0),
+            str(owner_result.get("total_points") or 0),
+        ])
+
+        lines.append("<tr>")
+        for value in row_values:
+            lines.append(f"<td>{html.escape(str(value))}</td>")
+        lines.append("</tr>")
+
+    lines.append("</tbody></table>")
+    lines.append("</body></html>")
+    return HTMLResponse("\n".join(lines))
 
 
 def _best_deck_candidates_for_owner(raffle_list: list[dict], owner_name: str) -> list[dict]:
