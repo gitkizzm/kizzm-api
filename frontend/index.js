@@ -824,6 +824,8 @@ async function ensureCardPreviewLoaded(){
     if(!bestDeckVotingState || !bestDeckVotingRootEl) return;
 
     let touchDraggedDeckId = null;
+    let touchDraggedFromPlace = null;
+    let dragFromPlace = null;
     const zones = [votingDecksPoolEl, ...Array.from(bestDeckVotingRootEl.querySelectorAll('.report-dropzone'))].filter(Boolean);
 
     function clearZoneHighlights(){
@@ -836,9 +838,19 @@ async function ensureCardPreviewLoaded(){
       return el.closest('#votingDecksPool, #bestDeckVoting .report-dropzone');
     }
 
-    function placeDeckInZone(deckId, zone){
+    function isRankPlace(place){
+      return ['1', '2', '3'].includes(String(place || '').trim());
+    }
+
+    function placeDeckInZone(deckId, zone, sourcePlace = null){
       const numericDeckId = Number(deckId || 0) || 0;
       if(!numericDeckId || !zone || !bestDeckVotingState) return;
+
+      const targetPlace = String(zone.dataset.place || '').trim();
+      const normalizedSourcePlace = String(sourcePlace || '').trim();
+      const sourceIsRank = isRankPlace(normalizedSourcePlace);
+      const targetIsRank = isRankPlace(targetPlace);
+      const targetCurrentDeckId = targetIsRank ? (Number(bestDeckVotingState.placements?.[targetPlace] || 0) || null) : null;
 
       for(const place of ['1','2','3']){
         if(Number(bestDeckVotingState.placements?.[place] || 0) === numericDeckId){
@@ -846,9 +858,17 @@ async function ensureCardPreviewLoaded(){
         }
       }
 
-      const targetPlace = String(zone.dataset.place || '').trim();
-      if(targetPlace && ['1','2','3'].includes(targetPlace)){
+      if(targetIsRank){
         bestDeckVotingState.placements[targetPlace] = numericDeckId;
+
+        if(
+          sourceIsRank
+          && normalizedSourcePlace !== targetPlace
+          && targetCurrentDeckId
+          && targetCurrentDeckId !== numericDeckId
+        ){
+          bestDeckVotingState.placements[normalizedSourcePlace] = targetCurrentDeckId;
+        }
       }
 
       renderBestDeckVoting();
@@ -860,6 +880,7 @@ async function ensureCardPreviewLoaded(){
       chip.addEventListener('dragstart', (ev) => {
         const deckId = chip.dataset.deckId;
         if(!deckId) return;
+        dragFromPlace = chip.closest('.report-dropzone')?.dataset?.place || null;
         ev.dataTransfer?.setData('text/plain', deckId);
       });
 
@@ -867,6 +888,7 @@ async function ensureCardPreviewLoaded(){
         const deckId = chip.dataset.deckId;
         if(!deckId) return;
         touchDraggedDeckId = deckId;
+        touchDraggedFromPlace = chip.closest('.report-dropzone')?.dataset?.place || null;
         chip.classList.add('is-touch-picked');
       }, { passive: true });
 
@@ -885,8 +907,9 @@ async function ensureCardPreviewLoaded(){
         const t = ev.changedTouches?.[0];
         const targetZone = t ? zoneAtPoint(t.clientX, t.clientY) : null;
         clearZoneHighlights();
-        if(targetZone) placeDeckInZone(touchDraggedDeckId, targetZone);
+        if(targetZone) placeDeckInZone(touchDraggedDeckId, targetZone, touchDraggedFromPlace);
         touchDraggedDeckId = null;
+        touchDraggedFromPlace = null;
       }, { passive: true });
     });
 
@@ -903,7 +926,8 @@ async function ensureCardPreviewLoaded(){
         ev.preventDefault();
         zone.classList.remove('is-over');
         const deckId = ev.dataTransfer?.getData('text/plain');
-        placeDeckInZone(deckId, zone);
+        placeDeckInZone(deckId, zone, dragFromPlace);
+        dragFromPlace = null;
       });
     });
   }
