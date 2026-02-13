@@ -87,10 +87,9 @@
         {% else %}
         {% if existing_entry.pairing_phase == "voting" %}
             <div class="status" style="margin-top: 12px;">
-                Bitte stimme jetzt für die besten Decks ab.
+                Hallo {{ deckOwner }}, bitte vote für deine Top 3.
             </div>
             <section class="voting-section" id="bestDeckVoting" data-voting-kind="best-deck" style="margin-top: 12px;">
-                <h2 id="bestDeckVotingTitle" class="voting-title">Best-Deck-Voting</h2>
                 <div class="report-layout voting-layout">
                     <div class="report-box" id="votingDecksPool"></div>
                     <div class="report-box report-places voting-places" id="votingPlaces">

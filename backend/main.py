@@ -317,7 +317,7 @@ async def get_form(
         entry_pairing_round = int(existing_entry.get("pairing_round") or 0) if existing_entry else 0
 
         if pairings_phase == "voting" or entry_pairing_phase == "voting":
-            glasscard_title = "Voting"
+            glasscard_title = "Best-Deck-Voting"
         elif pairings_phase == "playing" and active_round > 0:
             glasscard_title = f"Spielphase – Runde {active_round}"
         elif entry_pairing_round > 0:
