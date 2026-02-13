@@ -85,6 +85,29 @@
                 <button type="button" id="openReportModal">Ergebnis melden</button>
             </div>
         {% else %}
+        {% if existing_entry.pairing_phase == "voting" %}
+            <div class="status" style="margin-top: 12px;">
+                Bitte stimme jetzt für die besten Decks ab.
+            </div>
+            <section class="voting-section" id="bestDeckVoting" data-voting-kind="best-deck" style="margin-top: 12px;">
+                <h2 id="bestDeckVotingTitle" class="voting-title">Best-Deck-Voting</h2>
+                <div class="report-layout voting-layout">
+                    <div class="report-box" id="votingDecksPool"></div>
+                    <div class="report-box report-places voting-places" id="votingPlaces">
+                        {% for place in [1,2,3] %}
+                            <div class="report-place-slot" data-place="{{ place }}">
+                                <div class="report-dropzone" data-place="{{ place }}" data-place-label="Rang {{ place }}"></div>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                <p id="votingError" class="field-error" style="display:none;"></p>
+                <div class="btn-row" style="margin-top: 10px;">
+                    <button type="button" id="submitBestDeckVote">Bestätigen</button>
+                    <button type="button" id="resetBestDeckVote" class="btn-ghost">Zurücksetzen</button>
+                </div>
+            </section>
+        {% else %}
         <p class="status">
             Bitte übergebe dieses Deck an
             <span class="status ok" style="display:inline-block; padding:4px 8px; margin-left:6px;">
@@ -107,14 +130,11 @@
             </form>
         {% endif %}
 
-        {% if existing_entry.pairing_phase == "voting" %}
-            <div class="status danger" style="margin-top: 12px;">
-                Spielphase beendet. Bitte jetzt das Voting starten.
-            </div>
-        {% elif start_file_exists and existing_entry.received_confirmed %}
+        {% if start_file_exists and existing_entry.received_confirmed %}
             <div class="status" style="margin-top: 12px;">
                 Bitte warte auf die Pairings.
             </div>
+        {% endif %}
         {% endif %}
         {% endif %}
 

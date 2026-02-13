@@ -1572,6 +1572,150 @@ async def background_commander(name: str = ""):
         return JSONResponse({"url": None, "zoom": _current_settings().ui.commander_bg_zoom})
 
 
+def _best_deck_votes_bucket(state: dict) -> dict:
+    votes = state.setdefault("best_deck_votes", {})
+    if not isinstance(votes, dict):
+        votes = {}
+        state["best_deck_votes"] = votes
+    return votes
+
+
+def _best_deck_candidates_for_owner(raffle_list: list[dict], owner_name: str) -> list[dict]:
+    owner = (owner_name or "").strip()
+    own_built_entry = next(
+        (e for e in raffle_list if (e.get("deckersteller") or "").strip() == owner),
+        None,
+    )
+    own_built_deck_id = int((own_built_entry or {}).get("deck_id") or 0)
+
+    candidates: list[dict] = []
+    for entry in raffle_list:
+        deck_id = int(entry.get("deck_id") or 0)
+        if deck_id <= 0:
+            continue
+        if deck_id == own_built_deck_id:
+            continue
+        commander = (entry.get("commander") or "").strip()
+        commander2 = (entry.get("commander2") or "").strip()
+        commander_label = commander
+        if commander and commander2:
+            commander_label = f"{commander} / {commander2}"
+        candidates.append({
+            "deck_id": deck_id,
+            "deckersteller": (entry.get("deckersteller") or "").strip(),
+            "deck_owner": (entry.get("deckOwner") or "").strip(),
+            "commander": commander_label,
+        })
+
+    return sorted(candidates, key=lambda item: item["deck_id"])
+
+
+@app.get("/api/voting/best-deck/current")
+async def current_best_deck_voting(deck_id: int):
+    raffle_list = _load_raffle_list()
+    state = _load_pairings() or {}
+
+    if not state or (state.get("phase") or "") != "voting":
+        raise HTTPException(status_code=400, detail="Aktuell keine aktive Voting-Phase.")
+
+    entry = next((e for e in raffle_list if e.get("deck_id") == deck_id), None)
+    if not entry:
+        raise HTTPException(status_code=404, detail="Deck nicht gefunden.")
+
+    owner_name = (entry.get("deckOwner") or "").strip()
+    if not owner_name:
+        raise HTTPException(status_code=400, detail="Deck hat keinen zugewiesenen Owner.")
+
+    candidates = _best_deck_candidates_for_owner(raffle_list, owner_name)
+    raffle_by_deck_id = {
+        int(e.get("deck_id") or 0): e
+        for e in raffle_list
+        if int(e.get("deck_id") or 0) > 0
+    }
+    for candidate in candidates:
+        candidate_deck_id = int(candidate.get("deck_id") or 0)
+        owner_entry = raffle_by_deck_id.get(candidate_deck_id) or {}
+        commander_name = (owner_entry.get("commander") or "").strip()
+        commander_id = owner_entry.get("commander_id")
+        candidate["avatar_url"] = await _round_report_avatar_art_url(commander_name, commander_id)
+
+    votes = (state.get("best_deck_votes") or {}).get(str(deck_id)) or {}
+
+    placements = {"1": None, "2": None, "3": None}
+    for place in ["1", "2", "3"]:
+        val = votes.get(place)
+        if isinstance(val, int):
+            placements[place] = val
+
+    return {
+        "phase_title": "Best-Deck-Voting",
+        "candidates": candidates,
+        "placements": placements,
+        "has_vote": all(bool(placements[k]) for k in ["1", "2", "3"]),
+    }
+
+
+@app.post("/api/voting/best-deck/submit")
+async def submit_best_deck_vote(payload: dict = Body(...)):
+    deck_id = int(payload.get("deck_id") or 0)
+    raw_places = payload.get("placements") or {}
+
+    if deck_id <= 0:
+        raise HTTPException(status_code=400, detail="deck_id fehlt.")
+    if not isinstance(raw_places, dict):
+        raise HTTPException(status_code=400, detail="placements muss ein Objekt sein.")
+
+    async with RAFFLE_LOCK:
+        raffle_list = _load_raffle_list()
+        state = _load_pairings() or {}
+
+        if not state or (state.get("phase") or "") != "voting":
+            raise HTTPException(status_code=400, detail="Aktuell keine aktive Voting-Phase.")
+
+        entry = next((e for e in raffle_list if e.get("deck_id") == deck_id), None)
+        if not entry:
+            raise HTTPException(status_code=404, detail="Deck nicht gefunden.")
+
+        owner_name = (entry.get("deckOwner") or "").strip()
+        if not owner_name:
+            raise HTTPException(status_code=400, detail="Deck hat keinen zugewiesenen Owner.")
+
+        votes = _best_deck_votes_bucket(state)
+        key = str(deck_id)
+        if votes.get(key):
+            raise HTTPException(status_code=409, detail="Best-Deck-Voting wurde bereits bestätigt.")
+
+        candidates = _best_deck_candidates_for_owner(raffle_list, owner_name)
+        candidate_ids = {int(item["deck_id"]) for item in candidates}
+
+        normalized: dict[str, int] = {}
+        seen: set[int] = set()
+        for place in ["1", "2", "3"]:
+            val = raw_places.get(place)
+            try:
+                voted_deck_id = int(val)
+            except (TypeError, ValueError):
+                raise HTTPException(status_code=400, detail="Bitte Rang 1 bis 3 vollständig belegen.")
+            if voted_deck_id in seen:
+                raise HTTPException(status_code=400, detail="Jeder Rang muss ein anderes Deck enthalten.")
+            if voted_deck_id not in candidate_ids:
+                raise HTTPException(status_code=400, detail="Ungültige Deck-Auswahl im Voting.")
+            seen.add(voted_deck_id)
+            normalized[place] = voted_deck_id
+
+        votes[key] = {
+            "1": normalized["1"],
+            "2": normalized["2"],
+            "3": normalized["3"],
+            "voted_by": owner_name,
+            "submitted_at": datetime.now(timezone.utc).isoformat(),
+        }
+        _atomic_write_pairings(state)
+
+    await notify_state_change()
+    return {"ok": True}
+
+
 @app.get("/api/round-report/current")
 async def current_round_report(deck_id: int):
     raffle_list = _load_raffle_list()
