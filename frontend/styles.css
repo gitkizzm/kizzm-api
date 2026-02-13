@@ -997,3 +997,41 @@ body.ccp-page .ccp-card{
 .report-player-chip--voting{
   width:100%;
 }
+
+
+.chip-preview-overlay{
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  background: rgba(0,0,0,0.55);
+}
+
+.chip-preview-overlay .card-preview,
+#chipPreviewModalCardHost .card-preview{
+  position: static;
+  transform: none;
+  pointer-events: auto;
+  margin: 24px auto 12px;
+  width: fit-content;
+}
+
+.chip-preview-close{
+  position: absolute;
+  right: 16px;
+  top: 16px;
+  z-index: 71;
+}
+
+.chip-preview-modal{
+  max-width: 520px;
+}
+
+.chip-preview-names{
+  text-align: center;
+  margin-top: 8px;
+  font-weight: 700;
+}
+
+.report-player-avatar{
+  cursor: pointer;
+}
