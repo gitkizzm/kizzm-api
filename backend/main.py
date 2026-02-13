@@ -1076,6 +1076,8 @@ async def customer_control_panel(request: Request):
     tooltip_items = []
     confirmed_count = 0
     total_decks = 0
+    voting_done_count = 0
+    voting_total_count = 0
 
     raffle_list = _load_raffle_list()
     all_confirmed = _all_received_confirmed(raffle_list) if start_file_exists else False
@@ -1083,6 +1085,7 @@ async def customer_control_panel(request: Request):
     pairings_phase = pair.get("phase") or ("ready" if all_confirmed else None)
     active_round = int(pair.get("active_round") or 0) if pair else 0
     pairings_started = bool(pair) and active_round > 0
+    voting_results_published = bool(_published_voting_results(pair)) if isinstance(pair, dict) else False
 
     # für Host-Auswahl (nur sinnvoll nach Start + alle bestätigt)
     players = _deckowners(raffle_list) if start_file_exists else []
@@ -1127,17 +1130,34 @@ async def customer_control_panel(request: Request):
 
                         confirmed_count = sum(1 for e in content if e.get("received_confirmed") is True)  # X
 
-                        tooltip_items = sorted(
-                            [
-                                {
-                                    "name": (e.get("deckOwner") or "(noch kein Owner)"),
-                                    "received_confirmed": bool(e.get("received_confirmed")),
-                                }
-                                for e in content
-                                if e.get("deck_id") is not None
-                            ],
-                            key=lambda x: x["name"].lower()
-                        )
+                        if pairings_phase == "voting":
+                            top3_votes = (pair.get("best_deck_votes") or {}) if isinstance(pair, dict) else {}
+                            deckraten_votes = (pair.get("deck_creator_guess_votes") or {}) if isinstance(pair, dict) else {}
+                            owners = sorted({(e.get("deckOwner") or "").strip() for e in content if (e.get("deckOwner") or "").strip()})
+                            voting_total_count = len(owners)
+                            done_by_owner = {}
+                            for owner in owners:
+                                owner_entry = next((e for e in content if (e.get("deckOwner") or "").strip() == owner), None)
+                                owner_deck_id = int((owner_entry or {}).get("deck_id") or 0)
+                                key = str(owner_deck_id)
+                                done_by_owner[owner] = bool(top3_votes.get(key)) and bool(deckraten_votes.get(key))
+                            voting_done_count = sum(1 for v in done_by_owner.values() if v)
+                            tooltip_items = [
+                                {"name": owner, "received_confirmed": bool(done_by_owner.get(owner))}
+                                for owner in owners
+                            ]
+                        else:
+                            tooltip_items = sorted(
+                                [
+                                    {
+                                        "name": (e.get("deckOwner") or "(noch kein Owner)"),
+                                        "received_confirmed": bool(e.get("received_confirmed")),
+                                    }
+                                    for e in content
+                                    if e.get("deck_id") is not None
+                                ],
+                                key=lambda x: x["name"].lower()
+                            )
 
                     else:
                         # VOR Start: Deckersteller wie bisher
@@ -1168,6 +1188,9 @@ async def customer_control_panel(request: Request):
             # neu
             "confirmed_count": confirmed_count,
             "tooltip_items": tooltip_items,
+            "voting_done_count": voting_done_count,
+            "voting_total_count": voting_total_count,
+            "voting_results_published": voting_results_published,
 
             "all_confirmed": all_confirmed,
             "pairings_started": pairings_started,
@@ -1596,6 +1619,132 @@ def _deck_creator_guess_votes_bucket(state: dict) -> dict:
     return votes
 
 
+def _votes_results_bucket(state: dict) -> dict:
+    result = state.setdefault("voting_results", {})
+    if not isinstance(result, dict):
+        result = {}
+        state["voting_results"] = result
+    return result
+
+
+def _commander_label(entry: dict) -> str:
+    commander = (entry.get("commander") or "").strip()
+    commander2 = (entry.get("commander2") or "").strip()
+    if commander and commander2:
+        return f"{commander} / {commander2}"
+    return commander or f"Deck #{int(entry.get('deck_id') or 0)}"
+
+
+def _published_voting_results(state: dict | None) -> dict | None:
+    bucket = (state or {}).get("voting_results") or {}
+    if not isinstance(bucket, dict):
+        return None
+    if not bucket.get("published"):
+        return None
+    data = bucket.get("data")
+    return data if isinstance(data, dict) else None
+
+
+def _calculate_voting_results(raffle_list: list[dict], state: dict) -> dict:
+    owners = sorted({(e.get("deckOwner") or "").strip() for e in raffle_list if (e.get("deckOwner") or "").strip()})
+    built_by_owner: dict[str, dict] = {}
+    for owner in owners:
+        built = next((e for e in raffle_list if (e.get("deckersteller") or "").strip() == owner), None)
+        if built:
+            built_by_owner[owner] = built
+
+    gameplay_points = {owner: 0 for owner in owners}
+    place_points = {1: 4, 2: 3, 3: 2, 4: 1}
+    round_reports = (state.get("round_reports") or {}) if isinstance(state, dict) else {}
+    for reports_for_round in round_reports.values():
+        if not isinstance(reports_for_round, dict):
+            continue
+        for report in reports_for_round.values():
+            resolved = (report or {}).get("resolved_places") or {}
+            if not isinstance(resolved, dict):
+                continue
+            for player, place in resolved.items():
+                owner = (player or "").strip()
+                if owner not in gameplay_points:
+                    continue
+                try:
+                    p = int(place)
+                except (TypeError, ValueError):
+                    continue
+                gameplay_points[owner] += place_points.get(p, 0)
+
+    top3_votes = (state.get("best_deck_votes") or {}) if isinstance(state, dict) else {}
+    top3_deck_points: dict[int, int] = {}
+    for vote in top3_votes.values():
+        if not isinstance(vote, dict):
+            continue
+        for place, pts in (("1", 3), ("2", 2), ("3", 1)):
+            try:
+                deck_id = int(vote.get(place) or 0)
+            except (TypeError, ValueError):
+                deck_id = 0
+            if deck_id > 0:
+                top3_deck_points[deck_id] = top3_deck_points.get(deck_id, 0) + pts
+
+    ranked_decks = sorted(top3_deck_points.items(), key=lambda x: (-x[1], x[0]))
+    top3_bonus_by_owner = {owner: 0 for owner in owners}
+    for idx, (deck_id, _pts) in enumerate(ranked_decks, start=1):
+        bonus = max(9 - idx, 1)
+        deck_entry = next((e for e in raffle_list if int(e.get("deck_id") or 0) == deck_id), None)
+        owner = (deck_entry.get("deckersteller") or "").strip() if deck_entry else ""
+        if owner in top3_bonus_by_owner:
+            top3_bonus_by_owner[owner] += bonus
+
+    deckraten_votes = (state.get("deck_creator_guess_votes") or {}) if isinstance(state, dict) else {}
+    guess_points_by_owner = {owner: 0 for owner in owners}
+    for voter_deck_id, vote in deckraten_votes.items():
+        if not isinstance(vote, dict):
+            continue
+        voter_entry = next((e for e in raffle_list if str(int(e.get("deck_id") or 0)) == str(voter_deck_id)), None)
+        voter_owner = (voter_entry.get("deckOwner") or "").strip() if voter_entry else ""
+        if voter_owner not in guess_points_by_owner:
+            continue
+        score = 0
+        for creator, assigned_deck_id in vote.items():
+            if creator in {"voted_by", "submitted_at"}:
+                continue
+            try:
+                assigned = int(assigned_deck_id or 0)
+            except (TypeError, ValueError):
+                continue
+            target_entry = next((e for e in raffle_list if (e.get("deckersteller") or "").strip() == str(creator).strip()), None)
+            target_deck_id = int((target_entry or {}).get("deck_id") or 0)
+            if assigned > 0 and target_deck_id > 0 and assigned == target_deck_id:
+                score += 1
+        guess_points_by_owner[voter_owner] += score
+
+    rows = []
+    for owner in owners:
+        built = built_by_owner.get(owner) or {}
+        built_deck_id = int(built.get("deck_id") or 0)
+        deck_vote_points = top3_deck_points.get(built_deck_id, 0)
+        gameplay = gameplay_points.get(owner, 0)
+        top3_bonus = top3_bonus_by_owner.get(owner, 0)
+        guess_points = guess_points_by_owner.get(owner, 0)
+        total = gameplay + top3_bonus + guess_points
+        rows.append({
+            "player": owner,
+            "deck_name": _commander_label(built) if built else "-",
+            "game_points": gameplay,
+            "deck_voting_points": deck_vote_points,
+            "guess_points": guess_points,
+            "top3_overall_bonus": top3_bonus,
+            "total_points": total,
+        })
+
+    rows.sort(key=lambda r: (-int(r.get("total_points") or 0), -(int(r.get("game_points") or 0)), str(r.get("player") or "").lower()))
+
+    return {
+        "rows": rows,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 def _best_deck_candidates_for_owner(raffle_list: list[dict], owner_name: str) -> list[dict]:
     owner = (owner_name or "").strip()
     own_built_entry = next(
@@ -1641,6 +1790,19 @@ async def current_best_deck_voting(deck_id: int):
     owner_name = (entry.get("deckOwner") or "").strip()
     if not owner_name:
         raise HTTPException(status_code=400, detail="Deck hat keinen zugewiesenen Owner.")
+
+    published = _published_voting_results(state)
+    if published:
+        return {
+            "phase_title": "Ergebnisse",
+            "voting_kind": "results_published",
+            "status_message": "Die Ergebnisse wurden veröffentlicht.",
+            "candidates": [],
+            "places": [],
+            "placements": {},
+            "has_vote": True,
+            "results": published,
+        }
 
     candidates = _best_deck_candidates_for_owner(raffle_list, owner_name)
     raffle_by_deck_id = {
@@ -1743,6 +1905,9 @@ async def submit_best_deck_vote(payload: dict = Body(...)):
         owner_name = (entry.get("deckOwner") or "").strip()
         if not owner_name:
             raise HTTPException(status_code=400, detail="Deck hat keinen zugewiesenen Owner.")
+
+        if _published_voting_results(state):
+            raise HTTPException(status_code=409, detail="Ergebnisse wurden bereits veröffentlicht.")
 
         top3_votes = _best_deck_votes_bucket(state)
         deckraten_votes = _deck_creator_guess_votes_bucket(state)
@@ -1942,6 +2107,36 @@ async def reset_round_report(round_no: int = Form(...), table_no: int = Form(...
 
     await notify_state_change()
     return RedirectResponse(url="/CCP", status_code=303)
+
+@app.post("/publishVotingResults")
+async def publish_voting_results():
+    async with RAFFLE_LOCK:
+        raffle_list = _load_raffle_list()
+        state = _load_pairings() or {}
+        if not state or (state.get("phase") or "") != "voting":
+            raise HTTPException(status_code=400, detail="Aktuell keine aktive Voting-Phase.")
+
+        owners = sorted({(e.get("deckOwner") or "").strip() for e in raffle_list if (e.get("deckOwner") or "").strip()})
+        top3_votes = _best_deck_votes_bucket(state)
+        deckraten_votes = _deck_creator_guess_votes_bucket(state)
+
+        for owner in owners:
+            owner_entry = next((e for e in raffle_list if (e.get("deckOwner") or "").strip() == owner), None)
+            owner_deck_id = int((owner_entry or {}).get("deck_id") or 0)
+            key = str(owner_deck_id)
+            if not top3_votes.get(key) or not deckraten_votes.get(key):
+                raise HTTPException(status_code=400, detail="Noch nicht alle Teilnehmer haben beide Votings abgeschlossen.")
+
+        results = _calculate_voting_results(raffle_list, state)
+        bucket = _votes_results_bucket(state)
+        bucket["published"] = True
+        bucket["published_at"] = datetime.now(timezone.utc).isoformat()
+        bucket["data"] = results
+        _atomic_write_pairings(state)
+
+    await notify_state_change()
+    return RedirectResponse(url="/CCP", status_code=303)
+
 
 register_ws_routes(
     app,

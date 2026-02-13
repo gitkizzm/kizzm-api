@@ -48,6 +48,7 @@ async function ensureCardPreviewLoaded(){
   const votingPlacesEl = document.getElementById("votingPlaces");
   const votingErrorEl = document.getElementById("votingError");
   const votingHintEl = document.getElementById("votingHint");
+  const votingResultsEl = document.getElementById("votingResults");
   const submitBestDeckVoteBtn = document.getElementById("submitBestDeckVote");
   const resetBestDeckVoteBtn = document.getElementById("resetBestDeckVote");
 
@@ -765,6 +766,48 @@ async function ensureCardPreviewLoaded(){
     votingHintEl.style.display = message ? 'block' : 'none';
   }
 
+  function renderVotingResults(results){
+    if(!votingResultsEl) return;
+    const rows = Array.isArray(results?.rows) ? results.rows : [];
+    if(rows.length === 0){
+      votingResultsEl.style.display = 'none';
+      votingResultsEl.innerHTML = '';
+      return;
+    }
+    const body = rows.map((row, idx) => `
+      <tr>
+        <td>${idx + 1}</td>
+        <td>${escapeHtml(String(row.player || ''))}</td>
+        <td>${escapeHtml(String(row.deck_name || ''))}</td>
+        <td>${Number(row.game_points || 0)}</td>
+        <td>${Number(row.deck_voting_points || 0)}</td>
+        <td>${Number(row.guess_points || 0)}</td>
+        <td><strong>${Number(row.total_points || 0)}</strong></td>
+      </tr>
+    `).join('');
+    votingResultsEl.innerHTML = `
+      <div class="status" style="margin-top:10px;">
+        <strong>Overall-Auswertung</strong>
+        <div style="overflow:auto; margin-top:8px;">
+          <table style="width:100%; border-collapse: collapse; font-size: 0.95em;">
+            <thead>
+              <tr>
+                <th style="text-align:left; padding:4px;">#</th>
+                <th style="text-align:left; padding:4px;">Spieler</th>
+                <th style="text-align:left; padding:4px;">Deck</th>
+                <th style="text-align:right; padding:4px;">Spielpunkte</th>
+                <th style="text-align:right; padding:4px;">Deck-Voting</th>
+                <th style="text-align:right; padding:4px;">Ratepunkte</th>
+                <th style="text-align:right; padding:4px;">Gesamt</th>
+              </tr>
+            </thead>
+            <tbody>${body}</tbody>
+          </table>
+        </div>
+      </div>`;
+    votingResultsEl.style.display = 'block';
+  }
+
   function currentVotingPlaces(){
     return Array.isArray(bestDeckVotingState?.places) ? bestDeckVotingState.places : [];
   }
@@ -811,6 +854,16 @@ async function ensureCardPreviewLoaded(){
 
   function renderBestDeckVoting(){
     if(!bestDeckVotingState || !votingDecksPoolEl || !votingPlacesEl) return;
+
+    const isPublished = bestDeckVotingState.votingKind === 'results_published';
+    renderVotingResults(isPublished ? bestDeckVotingState.results : null);
+    if(isPublished){
+      votingDecksPoolEl.innerHTML = '';
+      votingPlacesEl.innerHTML = '';
+      submitBestDeckVoteBtn && (submitBestDeckVoteBtn.disabled = true);
+      resetBestDeckVoteBtn && (resetBestDeckVoteBtn.disabled = true);
+      return;
+    }
 
     renderVotingPlaces();
     const places = currentVotingPlaces();
@@ -998,6 +1051,7 @@ async function ensureCardPreviewLoaded(){
       places,
       placements,
       hasVote: !!data.has_vote,
+      results: data.results || null,
     };
 
     if(bestDeckVotingTitleEl && data.phase_title){
@@ -1006,7 +1060,8 @@ async function ensureCardPreviewLoaded(){
     setVotingHint(data.status_message || '');
 
     renderBestDeckVoting();
-    setVotingError(bestDeckVotingState.hasVote ? 'Voting wurde bereits bestätigt.' : '');
+    if(bestDeckVotingState.votingKind === 'results_published' || bestDeckVotingState.votingKind === 'waiting_results') setVotingError('');
+    else setVotingError(bestDeckVotingState.hasVote ? 'Voting wurde bereits bestätigt.' : '');
   }
 
   function initBestDeckVoting(){
