@@ -2084,16 +2084,16 @@ def _ergebnisse_columns_and_rows() -> tuple[list[str], list[list[str]]]:
     for round_no in range(1, max_rounds + 1):
         columns.append(f"round_reports.{round_no}.resolved_places[deckOwner]")
     columns.extend([
-        "best_deck_votes.{deck_id}.1",
-        "best_deck_votes.{deck_id}.2",
-        "best_deck_votes.{deck_id}.3",
-        "calculated.top3_received_vote_points",
-        "calculated.top3_received_rank",
-        "calculated.top3_rank_points_used_for_overall",
-        "deck_creator_guess_votes.{deck_id}",
-        "calculated.round_phase_points",
-        "calculated.deck_creator_guess_points",
-        "calculated.overall_event_points",
+        "best_deck_votes.{deck_id}.1 (vom deckOwner abgegeben)",
+        "best_deck_votes.{deck_id}.2 (vom deckOwner abgegeben)",
+        "best_deck_votes.{deck_id}.3 (vom deckOwner abgegeben)",
+        "calculated.top3_received_vote_points (für Deck des deckerstellers)",
+        "calculated.top3_received_rank (für Deck des deckerstellers)",
+        "calculated.top3_rank_points_used_for_overall (creator-basiert)",
+        "deck_creator_guess_votes.{deck_id} (vom deckOwner abgegeben)",
+        "calculated.round_phase_points (deckOwner-basiert)",
+        "calculated.deck_creator_guess_points (deckOwner-basiert)",
+        "calculated.overall_event_points (owner+creator gemischt)",
     ])
 
     rows: list[list[str]] = []

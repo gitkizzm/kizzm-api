@@ -31,24 +31,24 @@ uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 
 Der Entwicklungs-Endpunkt `/ergebnisse` zeigt pro Deck eine Zeile mit den unten beschriebenen Variablen.
 
-| Variable (Spaltenname in `/ergebnisse`) | Erfassung/Berechnung | Speicherung | Beschreibung |
-|---|---|---|---|
-| `deck_id` | Bei Registrierung vergeben/übernommen | `raffle.json` pro Deck-Eintrag | Eindeutige Deck-ID innerhalb des Events. |
-| `deckersteller` | Bei Registrierung aus dem Formular | `raffle.json` pro Deck-Eintrag | Person, die das Deck gebaut hat. |
-| `deckOwner` | Beim Raffle-Start zugewiesen | `raffle.json` pro Deck-Eintrag | Person, die das Deck im Event spielt. |
-| `commander` | Bei Registrierung aus dem Formular (Commander 1) | `raffle.json` pro Deck-Eintrag | Primärer Commander-Name. |
-| `commander2` | Optional bei Registrierung aus dem Formular (Commander 2) | `raffle.json` pro Deck-Eintrag | Zweiter Commander (Partner/Background/etc.). |
-| `round_reports.<runde>.resolved_places[deckOwner]` | Aus Round-Report je Tisch aufgelöst (inkl. Tie-Handling) | `pairings.json` unter `round_reports` | Platzierung (Rank) eines Spielers in einer konkreten Runde. |
-| `best_deck_votes.{deck_id}.1` | Top-3-Voting-Eingabe eines Deck-Owners (Platz 1) | `pairings.json` unter `best_deck_votes` | Deck-ID, die als #1 gewählt wurde. |
-| `best_deck_votes.{deck_id}.2` | Top-3-Voting-Eingabe eines Deck-Owners (Platz 2) | `pairings.json` unter `best_deck_votes` | Deck-ID, die als #2 gewählt wurde. |
-| `best_deck_votes.{deck_id}.3` | Top-3-Voting-Eingabe eines Deck-Owners (Platz 3) | `pairings.json` unter `best_deck_votes` | Deck-ID, die als #3 gewählt wurde. |
-| `calculated.top3_received_vote_points` | Berechnet aus allen Top-3-Votes (`#1=3`, `#2=2`, `#3=1`) | Laufzeitberechnung für `/ergebnisse` (nicht persistiert) | Summe der erhaltenen Punkte eines Decks im Top-3-Voting. |
-| `calculated.top3_received_rank` | Sortierung nach `calculated.top3_received_vote_points` (absteigend, Tie-Break über `deck_id`) | Laufzeitberechnung für `/ergebnisse` (nicht persistiert) | Platzierung eines Decks im Top-3-Voting. |
-| `calculated.top3_rank_points_used_for_overall` | Aus `calculated.top3_received_rank` abgeleitet: Rank `1..8` ergibt `8..1` Punkte, ab Rank `9` = `0` | Bereits in `pairings.json -> voting_results.data.rows[].deck_voting_points` nach Publish, sonst Laufzeitberechnung | Die Deck-Voting-Punkte, die in die Gesamtwertung eingehen. |
-| `deck_creator_guess_votes.{deck_id}` | Voting-Eingabe eines Deck-Owners im Deckraten | `pairings.json` unter `deck_creator_guess_votes` | Mapping *Deckersteller → vermutete Deck-ID* für einen Voter. |
-| `calculated.round_phase_points` | Summe der Rundenpunkte aus allen erfassten `resolved_places` (`1→4`, `2→3`, `3→2`, `4→1`) | Bereits in `pairings.json -> voting_results.data.rows[].game_points` nach Publish, sonst Laufzeitberechnung | Gesamtpunkte eines Spielers nur aus der Rundenphase. |
-| `calculated.deck_creator_guess_points` | +1 pro korrekter Zuordnung im Deckraten | Bereits in `pairings.json -> voting_results.data.rows[].guess_points` nach Publish, sonst Laufzeitberechnung | Erhaltene Punkte eines Spielers im Deckraten. |
-| `calculated.overall_event_points` | Summe aus Spielpunkten + Top3-Bonus + Deckratenpunkten | Bereits in `pairings.json -> voting_results.data.rows[].total_points` nach Publish, sonst Laufzeitberechnung | Gesamtpunktzahl eines Spielers im Event. |
+| Variable (Spaltenname in `/ergebnisse`) | Bezugsperson | Erfassung/Berechnung | Speicherung | Beschreibung |
+|---|---|---|---|---|
+| `deck_id` | Deck | Bei Registrierung vergeben/übernommen | `raffle.json` pro Deck-Eintrag | Eindeutige Deck-ID innerhalb des Events. |
+| `deckersteller` | Deck-Ersteller | Bei Registrierung aus dem Formular | `raffle.json` pro Deck-Eintrag | Person, die das Deck gebaut hat. |
+| `deckOwner` | Deck-Owner | Beim Raffle-Start zugewiesen | `raffle.json` pro Deck-Eintrag | Person, die das Deck im Event spielt. |
+| `commander` | Deck | Bei Registrierung aus dem Formular (Commander 1) | `raffle.json` pro Deck-Eintrag | Primärer Commander-Name. |
+| `commander2` | Deck | Optional bei Registrierung aus dem Formular (Commander 2) | `raffle.json` pro Deck-Eintrag | Zweiter Commander (Partner/Background/etc.). |
+| `round_reports.<runde>.resolved_places[deckOwner]` | Deck-Owner | Aus Round-Report je Tisch aufgelöst (inkl. Tie-Handling) | `pairings.json` unter `round_reports` | Platzierung (Rank) eines Spielers in einer konkreten Runde. |
+| `best_deck_votes.{deck_id}.1` | Votender Deck-Owner | Top-3-Voting-Eingabe eines Deck-Owners (Platz 1) | `pairings.json` unter `best_deck_votes` | Deck-ID, die als #1 gewählt wurde. |
+| `best_deck_votes.{deck_id}.2` | Votender Deck-Owner | Top-3-Voting-Eingabe eines Deck-Owners (Platz 2) | `pairings.json` unter `best_deck_votes` | Deck-ID, die als #2 gewählt wurde. |
+| `best_deck_votes.{deck_id}.3` | Votender Deck-Owner | Top-3-Voting-Eingabe eines Deck-Owners (Platz 3) | `pairings.json` unter `best_deck_votes` | Deck-ID, die als #3 gewählt wurde. |
+| `calculated.top3_received_vote_points` | Deck-Ersteller (über dessen Deck) | Berechnet aus allen Top-3-Votes (`#1=3`, `#2=2`, `#3=1`) | Laufzeitberechnung für `/ergebnisse` (nicht persistiert) | Summe der erhaltenen Punkte eines Decks im Top-3-Voting. |
+| `calculated.top3_received_rank` | Deck-Ersteller (über dessen Deck) | Sortierung nach `calculated.top3_received_vote_points` (absteigend, Tie-Break über `deck_id`) | Laufzeitberechnung für `/ergebnisse` (nicht persistiert) | Platzierung eines Decks im Top-3-Voting. |
+| `calculated.top3_rank_points_used_for_overall` | Deck-Ersteller | Aus `calculated.top3_received_rank` abgeleitet: Rank `1..8` ergibt `8..1` Punkte, ab Rank `9` = `0` | Bereits in `pairings.json -> voting_results.data.rows[].deck_voting_points` nach Publish, sonst Laufzeitberechnung | Die Deck-Voting-Punkte, die in die Gesamtwertung eingehen. |
+| `deck_creator_guess_votes.{deck_id}` | Votender Deck-Owner | Voting-Eingabe eines Deck-Owners im Deckraten | `pairings.json` unter `deck_creator_guess_votes` | Mapping *Deckersteller → vermutete Deck-ID* für einen Voter. |
+| `calculated.round_phase_points` | Deck-Owner | Summe der Rundenpunkte aus allen erfassten `resolved_places` (`1→4`, `2→3`, `3→2`, `4→1`) | Bereits in `pairings.json -> voting_results.data.rows[].game_points` nach Publish, sonst Laufzeitberechnung | Gesamtpunkte eines Spielers nur aus der Rundenphase. |
+| `calculated.deck_creator_guess_points` | Deck-Owner | +1 pro korrekter Zuordnung im Deckraten | Bereits in `pairings.json -> voting_results.data.rows[].guess_points` nach Publish, sonst Laufzeitberechnung | Erhaltene Punkte eines Spielers im Deckraten. |
+| `calculated.overall_event_points` | Deck-Owner (mit creator-basiertem Top3-Anteil) | Summe aus Spielpunkten + Top3-Bonus + Deckratenpunkten | Bereits in `pairings.json -> voting_results.data.rows[].total_points` nach Publish, sonst Laufzeitberechnung | Gesamtpunktzahl eines Spielers im Event. |
 
 ### Hinweise zur Berechnung
 
