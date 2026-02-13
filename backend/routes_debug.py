@@ -43,6 +43,12 @@ def register_debug_routes(app: FastAPI, apply_step, notify_state_change) -> None
             if result.get("phase"):
                 lines.append(f"<p>phase: {result.get('phase')}</p>")
 
+        if result.get("action") in ("filled_missing_voting_participants", "completed_voting_and_published_results"):
+            lines.append(f"<p>top3_filled_for: {result.get('top3_filled_for') or []}</p>")
+            lines.append(f"<p>deckraten_filled_for: {result.get('deckraten_filled_for') or []}</p>")
+            lines.append(f"<p>pending_voters: {result.get('pending_voters') or []}</p>")
+            lines.append(f"<p>published: {bool(result.get('published'))}</p>")
+
         if result.get("message"):
             lines.append(f"<p>{result.get('message')}</p>")
 
