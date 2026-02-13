@@ -1,6 +1,7 @@
 import uvicorn
+import html
 from fastapi import Body, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, JSONResponse, StreamingResponse
 from backend.schemas import DeckSchema
 from backend.app_factory import create_app
 from backend.repositories.json_store import atomic_write_json
@@ -72,6 +73,7 @@ from datetime import datetime, timezone
 import pandas as pd
 from random import shuffle, randint, choice
 import time 
+import io
 from collections import OrderedDict
 from urllib.parse import quote_plus, unquote_plus
 import httpx
@@ -627,6 +629,21 @@ async def success_page(request: Request):
     """
     return templates.TemplateResponse("success.html", {"request": request})
 
+async def _clear_event_data_in_memory() -> None:
+    # Löschen von raffle.json, falls sie existiert
+    if FILE_PATH.exists():
+        FILE_PATH.unlink()
+    # Löschen von start.txt, falls sie existiert
+    if START_FILE_PATH.exists():
+        START_FILE_PATH.unlink()
+    # Löschen von pairings.json, falls sie existiert
+    if PAIRINGS_PATH.exists():
+        PAIRINGS_PATH.unlink()
+    # Erstellen einer leeren raffle.json
+    with FILE_PATH.open("w", encoding="utf-8") as f:
+        json.dump([], f, ensure_ascii=False, indent=4)
+
+
 @app.post("/clear")
 async def clear_data():
     """
@@ -634,24 +651,14 @@ async def clear_data():
     Leitet den Benutzer anschließend zurück zum CCP.
     """
     try:
-        # Löschen von raffle.json, falls sie existiert
-        if FILE_PATH.exists():
-            FILE_PATH.unlink()
-        # Löschen von start.txt, falls sie existiert
-        if START_FILE_PATH.exists():
-            START_FILE_PATH.unlink()
-        # Löschen von pairings.json, falls sie existiert
-        if PAIRINGS_PATH.exists():
-            PAIRINGS_PATH.unlink()
-        # Erstellen einer leeren raffle.json
-        with FILE_PATH.open("w", encoding="utf-8") as f:
-            json.dump([], f, ensure_ascii=False, indent=4)
+        async with RAFFLE_LOCK:
+            await _clear_event_data_in_memory()
 
         await notify_state_change()
 
         # Weiterleitung zurück zum Customer Control Panel
         return RedirectResponse(url="/CCP", status_code=303)
-    
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Fehler beim Löschen der Dateien: {e}")
 
@@ -709,6 +716,62 @@ def _debug_detect_phase(start_file_exists: bool, raffle_list: list[dict], pair_s
         return "voting_needed"
 
     return "idle"
+
+
+_DEBUG_TERMINAL_STEP = 9
+
+
+def _debug_current_step_index(start_file_exists: bool, raffle_list: list[dict], pair_state: dict | None) -> int:
+    """
+    Returns the current sequential debug step index.
+
+    Step model:
+      0 = event reset / before registration helper run
+      1 = registrations prepared
+      2 = raffle started
+      3 = all decks confirmed
+      4 = pairings started (round 1)
+      5 = round 2 started
+      6 = round 3 started
+      7 = round 4 started
+      8 = voting phase reached
+      9 = voting results published
+    """
+    if not start_file_exists:
+        return 1 if _debug_has_minimal_registrations(raffle_list, min_decks=_current_settings().min_decks_to_start) else 0
+
+    if not _all_received_confirmed(raffle_list):
+        return 2
+
+    if not pair_state:
+        return 3
+
+    phase = (pair_state.get("phase") or "").strip().lower()
+    active_round = int(pair_state.get("active_round") or 0)
+
+    if phase == "playing":
+        if active_round <= 1:
+            return 4
+        if active_round == 2:
+            return 5
+        if active_round == 3:
+            return 6
+        if active_round == 4:
+            return 7
+        return 8
+
+    if phase == "voting":
+        return 9 if _published_voting_results(pair_state) else 8
+
+    return 9 if _published_voting_results(pair_state) else 8
+
+
+def _debug_read_current_step_index() -> int:
+    return _debug_current_step_index(
+        START_FILE_PATH.exists(),
+        _load_raffle_list(),
+        _load_pairings(),
+    )
 
 
 def _debug_complete_voting_and_publish_in_memory(raffle_list: list[dict], state: dict) -> dict:
@@ -1173,7 +1236,90 @@ async def _debug_apply_step() -> dict:
         }
 
 
-register_debug_routes(app, _debug_apply_step, notify_state_change)
+async def _debug_apply_step_with_skip(skip_to: int | None = None) -> dict:
+    if skip_to is None:
+        result = await _debug_apply_step()
+        result["current_step"] = _debug_read_current_step_index()
+        return result
+
+    if skip_to not in (-1, 0) and skip_to <= 0:
+        raise HTTPException(status_code=400, detail="skip_to muss > 0 sein oder die Sonderwerte 0/-1 verwenden.")
+
+    if skip_to == 0:
+        async with RAFFLE_LOCK:
+            await _clear_event_data_in_memory()
+        return {
+            "ok": True,
+            "action": "reset_to_start",
+            "skip_to": 0,
+            "current_step": _debug_read_current_step_index(),
+            "phase": "registration_needed",
+            "message": "Event wurde zurückgesetzt (entspricht /clear).",
+        }
+
+    target = _DEBUG_TERMINAL_STEP if skip_to == -1 else int(skip_to)
+    if target > _DEBUG_TERMINAL_STEP:
+        raise HTTPException(status_code=400, detail=f"skip_to darf maximal {_DEBUG_TERMINAL_STEP} sein (oder -1).")
+
+    current_step = _debug_read_current_step_index()
+    if current_step >= target:
+        return {
+            "ok": True,
+            "action": "skip_to_noop",
+            "skip_to": skip_to,
+            "current_step": current_step,
+            "phase": _debug_detect_phase(START_FILE_PATH.exists(), _load_raffle_list(), _load_pairings()),
+            "message": "skip_to erlaubt nur Vorwärtssprünge. Zielschritt ist bereits erreicht oder überschritten.",
+        }
+
+    last_result: dict = {
+        "ok": True,
+        "action": "skip_to_started",
+        "phase": _debug_detect_phase(START_FILE_PATH.exists(), _load_raffle_list(), _load_pairings()),
+    }
+
+    max_iterations = 64
+    for _ in range(max_iterations):
+        before = _debug_read_current_step_index()
+        if before >= target:
+            break
+
+        last_result = await _debug_apply_step()
+        after = _debug_read_current_step_index()
+
+        if after >= target:
+            break
+
+        # safety break to avoid endless loops if a noop/non-progress state is reached
+        if after <= before and last_result.get("action") == "noop":
+            break
+
+    final_step = _debug_read_current_step_index()
+    phase = _debug_detect_phase(START_FILE_PATH.exists(), _load_raffle_list(), _load_pairings())
+    if final_step >= target:
+        return {
+            **last_result,
+            "ok": True,
+            "action": "skip_to_reached",
+            "skip_to": skip_to,
+            "target_step": target,
+            "current_step": final_step,
+            "phase": phase,
+        }
+
+    return {
+        **last_result,
+        "ok": True,
+        "action": "skip_to_stopped",
+        "skip_to": skip_to,
+        "target_step": target,
+        "current_step": final_step,
+        "phase": phase,
+        "message": "skip_to konnte nicht vollständig ausgeführt werden (kein weiterer Fortschritt möglich).",
+    }
+
+
+register_debug_routes(app, _debug_apply_step_with_skip, notify_state_change)
 
 @app.get("/CCP", response_class=HTMLResponse)
 async def customer_control_panel(request: Request):
@@ -1803,9 +1949,11 @@ def _calculate_voting_results(raffle_list: list[dict], state: dict) -> dict:
                 top3_deck_points[deck_id] = top3_deck_points.get(deck_id, 0) + pts
 
     ranked_decks = sorted(top3_deck_points.items(), key=lambda x: (-x[1], x[0]))
+    # Deck-Voting-Punkte werden aus der Platzierung abgeleitet:
+    # Rank 1..8 => 8..1 Punkte, danach 0 Punkte.
     top3_bonus_by_owner = {owner: 0 for owner in owners}
     for idx, (deck_id, _pts) in enumerate(ranked_decks, start=1):
-        bonus = max(9 - idx, 1)
+        bonus = max(9 - idx, 0)
         deck_entry = next((e for e in raffle_list if int(e.get("deck_id") or 0) == deck_id), None)
         owner = (deck_entry.get("deckersteller") or "").strip() if deck_entry else ""
         if owner in top3_bonus_by_owner:
@@ -1838,7 +1986,7 @@ def _calculate_voting_results(raffle_list: list[dict], state: dict) -> dict:
     for owner in owners:
         built = built_by_owner.get(owner) or {}
         built_deck_id = int(built.get("deck_id") or 0)
-        deck_vote_points = top3_deck_points.get(built_deck_id, 0)
+        top3_received_vote_points = top3_deck_points.get(built_deck_id, 0)
         gameplay = gameplay_points.get(owner, 0)
         top3_bonus = top3_bonus_by_owner.get(owner, 0)
         guess_points = guess_points_by_owner.get(owner, 0)
@@ -1847,7 +1995,8 @@ def _calculate_voting_results(raffle_list: list[dict], state: dict) -> dict:
             "player": owner,
             "deck_name": _commander_label(built) if built else "-",
             "game_points": gameplay,
-            "deck_voting_points": deck_vote_points,
+            "deck_voting_points": top3_bonus,
+            "top3_received_vote_points": top3_received_vote_points,
             "guess_points": guess_points,
             "top3_overall_bonus": top3_bonus,
             "total_points": total,
@@ -1859,6 +2008,265 @@ def _calculate_voting_results(raffle_list: list[dict], state: dict) -> dict:
         "rows": rows,
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
+
+
+def _top3_points_and_rank_by_deck(state: dict) -> tuple[dict[int, int], dict[int, int]]:
+    top3_votes = (state.get("best_deck_votes") or {}) if isinstance(state, dict) else {}
+    points_by_deck: dict[int, int] = {}
+    for vote in top3_votes.values():
+        if not isinstance(vote, dict):
+            continue
+        for place, pts in (("1", 3), ("2", 2), ("3", 1)):
+            try:
+                deck_id = int(vote.get(place) or 0)
+            except (TypeError, ValueError):
+                deck_id = 0
+            if deck_id > 0:
+                points_by_deck[deck_id] = points_by_deck.get(deck_id, 0) + pts
+
+    ranking = sorted(points_by_deck.items(), key=lambda x: (-x[1], x[0]))
+    rank_by_deck = {deck_id: rank for rank, (deck_id, _pts) in enumerate(ranking, start=1)}
+    return points_by_deck, rank_by_deck
+
+
+def _round_rank_by_owner(state: dict, owner: str) -> dict[int, int | None]:
+    reports = (state.get("round_reports") or {}) if isinstance(state, dict) else {}
+    ranks: dict[int, int | None] = {}
+    for round_key, round_reports in reports.items():
+        try:
+            round_no = int(round_key)
+        except (TypeError, ValueError):
+            continue
+        rank_value = None
+        if isinstance(round_reports, dict):
+            for report in round_reports.values():
+                resolved = (report or {}).get("resolved_places") or {}
+                if not isinstance(resolved, dict):
+                    continue
+                if owner in resolved:
+                    try:
+                        rank_value = int(resolved.get(owner))
+                    except (TypeError, ValueError):
+                        rank_value = None
+                    break
+        ranks[round_no] = rank_value
+    return ranks
+
+
+def _ergebnisse_columns_and_rows() -> tuple[list[str], list[list[str]]]:
+    raffle_list = _load_raffle_list()
+    state = _load_pairings() or {}
+
+    voting_results = _calculate_voting_results(raffle_list, state)
+    row_by_owner = {
+        str(row.get("player") or "").strip(): row
+        for row in (voting_results.get("rows") or [])
+        if isinstance(row, dict)
+    }
+    top3_points_by_deck, top3_rank_by_deck = _top3_points_and_rank_by_deck(state)
+    best_deck_votes = (state.get("best_deck_votes") or {}) if isinstance(state, dict) else {}
+    deck_creator_guess_votes = (state.get("deck_creator_guess_votes") or {}) if isinstance(state, dict) else {}
+
+    max_rounds = int(state.get("active_round") or 0) if isinstance(state, dict) else 0
+    for round_key in ((state.get("round_reports") or {}) if isinstance(state, dict) else {}).keys():
+        try:
+            max_rounds = max(max_rounds, int(round_key))
+        except (TypeError, ValueError):
+            pass
+
+    columns = [
+        "deck_id",
+        "deckersteller",
+        "deckOwner",
+        "commander",
+        "commander2",
+    ]
+    for round_no in range(1, max_rounds + 1):
+        columns.append(f"round_reports.{round_no}.resolved_places[deckOwner]")
+    columns.extend([
+        "best_deck_votes.{deck_id}.1",
+        "best_deck_votes.{deck_id}.2",
+        "best_deck_votes.{deck_id}.3",
+        "calculated.top3_received_vote_points",
+        "calculated.top3_received_rank",
+        "calculated.top3_rank_points_used_for_overall",
+        "deck_creator_guess_votes.{deck_id}",
+        "calculated.round_phase_points",
+        "calculated.deck_creator_guess_points",
+        "calculated.overall_event_points",
+    ])
+
+    rows: list[list[str]] = []
+    sorted_entries = sorted(raffle_list, key=lambda e: int(e.get("deck_id") or 0))
+    for entry in sorted_entries:
+        deck_id = int(entry.get("deck_id") or 0)
+        owner = (entry.get("deckOwner") or "").strip()
+        round_ranks = _round_rank_by_owner(state, owner)
+        top3_vote = (best_deck_votes.get(str(deck_id)) or {}) if deck_id > 0 else {}
+        deckrate_vote = (deck_creator_guess_votes.get(str(deck_id)) or {}) if deck_id > 0 else {}
+        owner_result = row_by_owner.get(owner, {})
+
+        row_values: list[str] = [
+            str(deck_id) if deck_id > 0 else "",
+            str(entry.get("deckersteller") or ""),
+            owner,
+            str(entry.get("commander") or ""),
+            str(entry.get("commander2") or ""),
+        ]
+        for round_no in range(1, max_rounds + 1):
+            value = round_ranks.get(round_no)
+            row_values.append("" if value is None else str(value))
+
+        row_values.extend([
+            "" if not top3_vote else str(top3_vote.get("1") or ""),
+            "" if not top3_vote else str(top3_vote.get("2") or ""),
+            "" if not top3_vote else str(top3_vote.get("3") or ""),
+            str(top3_points_by_deck.get(deck_id, 0)),
+            str(top3_rank_by_deck.get(deck_id, "")),
+            str(owner_result.get("deck_voting_points") or 0),
+            "" if not deckrate_vote else json.dumps(deckrate_vote, ensure_ascii=False, sort_keys=True),
+            str(owner_result.get("game_points") or 0),
+            str(owner_result.get("guess_points") or 0),
+            str(owner_result.get("total_points") or 0),
+        ])
+        rows.append(row_values)
+
+    return columns, rows
+
+
+@app.get("/ergebnisse", response_class=HTMLResponse)
+async def development_results_overview(PDF: bool = False):
+    columns, rows = _ergebnisse_columns_and_rows()
+
+    if PDF:
+        def _pdf_escape(text: str) -> str:
+            return text.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
+
+        def _table_pdf_bytes(table_columns: list[str], table_rows: list[list[str]]) -> bytes:
+            page_w, page_h = 842.0, 595.0  # A4 landscape in points
+            margin = 20.0
+            row_h = 14.0
+            font_size = 7.0
+
+            ncols = max(1, len(table_columns))
+            usable_w = max(100.0, page_w - (2 * margin))
+            col_w = usable_w / ncols
+
+            max_table_rows_per_page = max(2, int((page_h - (2 * margin)) // row_h))
+            body_rows_per_page = max(1, max_table_rows_per_page - 1)  # minus header row
+
+            if not table_rows:
+                chunks: list[list[list[str]]] = [[]]
+            else:
+                chunks = [
+                    table_rows[i:i + body_rows_per_page]
+                    for i in range(0, len(table_rows), body_rows_per_page)
+                ]
+
+            objects: list[bytes] = []
+
+            # 1: Catalog, 2: Pages, 3: Font normal, 4: Font bold
+            objects.append(b"<< /Type /Catalog /Pages 2 0 R >>")
+            objects.append(b"__PAGES_PLACEHOLDER__")
+            objects.append(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
+            objects.append(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>")
+
+            page_object_ids: list[int] = []
+
+            def _fit_cell_text(value: str, width: float) -> str:
+                char_w = 4.0
+                max_chars = max(1, int((width - 4.0) // char_w))
+                if len(value) <= max_chars:
+                    return value
+                if max_chars <= 1:
+                    return value[:1]
+                return value[: max_chars - 1] + "…"
+
+            for chunk in chunks:
+                stream_ops: list[str] = []
+                y_top = page_h - margin
+
+                page_rows = [table_columns] + chunk
+                for row_idx, row_data in enumerate(page_rows):
+                    y_cell = y_top - ((row_idx + 1) * row_h)
+                    for col_idx in range(ncols):
+                        x_cell = margin + (col_idx * col_w)
+
+                        # Draw cell rectangle
+                        stream_ops.append(f"{x_cell:.2f} {y_cell:.2f} {col_w:.2f} {row_h:.2f} re S")
+
+                        raw_val = row_data[col_idx] if col_idx < len(row_data) else ""
+                        text = _fit_cell_text(str(raw_val), col_w)
+
+                        font_name = "/F2" if row_idx == 0 else "/F1"
+                        text_x = x_cell + 2.0
+                        text_y = y_cell + 4.0
+                        stream_ops.append(
+                            f"BT {font_name} {font_size:.1f} Tf 1 0 0 1 {text_x:.2f} {text_y:.2f} Tm ({_pdf_escape(text)}) Tj ET"
+                        )
+
+                stream_data = "\n".join(stream_ops).encode("latin-1", errors="replace")
+
+                content_obj_id = len(objects) + 1
+                objects.append(
+                    f"<< /Length {len(stream_data)} >>\nstream\n".encode("latin-1")
+                    + stream_data
+                    + b"\nendstream"
+                )
+
+                page_obj_id = len(objects) + 1
+                page_object_ids.append(page_obj_id)
+                page_obj = (
+                    f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {page_w:.0f} {page_h:.0f}] "
+                    f"/Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents {content_obj_id} 0 R >>"
+                ).encode("latin-1")
+                objects.append(page_obj)
+
+            kids = " ".join(f"{pid} 0 R" for pid in page_object_ids)
+            objects[1] = f"<< /Type /Pages /Kids [{kids}] /Count {len(page_object_ids)} >>".encode("latin-1")
+
+            out = io.BytesIO()
+            out.write(b"%PDF-1.4\n")
+            offsets = [0]
+            for i, obj in enumerate(objects, start=1):
+                offsets.append(out.tell())
+                out.write(f"{i} 0 obj\n".encode("latin-1"))
+                out.write(obj)
+                out.write(b"\nendobj\n")
+
+            xref_start = out.tell()
+            out.write(f"xref\n0 {len(objects)+1}\n".encode("latin-1"))
+            out.write(b"0000000000 65535 f \n")
+            for i in range(1, len(objects) + 1):
+                out.write(f"{offsets[i]:010d} 00000 n \n".encode("latin-1"))
+            out.write(
+                f"trailer\n<< /Size {len(objects)+1} /Root 1 0 R >>\nstartxref\n{xref_start}\n%%EOF".encode("latin-1")
+            )
+            return out.getvalue()
+
+        pdf_bytes = _table_pdf_bytes(columns, rows)
+        headers = {"Content-Disposition": "attachment; filename=ergebnisse.pdf"}
+        return StreamingResponse(io.BytesIO(pdf_bytes), media_type="application/pdf", headers=headers)
+
+    lines = [
+        "<html><head><meta charset='utf-8'><title>/ergebnisse</title></head><body style='font-family: system-ui; padding: 16px;'>",
+        "<h2>Event-Ergebnisse (Entwicklung)</h2>",
+        "<table border='1' cellspacing='0' cellpadding='6' style='border-collapse: collapse; font-size: 14px;'>",
+        "<thead><tr>",
+    ]
+    for col in columns:
+        lines.append(f"<th>{html.escape(col)}</th>")
+    lines.append("</tr></thead><tbody>")
+
+    for row_values in rows:
+        lines.append("<tr>")
+        for value in row_values:
+            lines.append(f"<td>{html.escape(str(value))}</td>")
+        lines.append("</tr>")
+
+    lines.append("</tbody></table>")
+    lines.append("</body></html>")
+    return HTMLResponse("\n".join(lines))
 
 
 def _best_deck_candidates_for_owner(raffle_list: list[dict], owner_name: str) -> list[dict]:
