@@ -856,14 +856,23 @@ async function ensureCardPreviewLoaded(){
     if(!bestDeckVotingState || !votingDecksPoolEl || !votingPlacesEl) return;
 
     const isPublished = bestDeckVotingState.votingKind === 'results_published';
+    const votingLayoutEl = bestDeckVotingRootEl?.querySelector('.voting-layout');
+
     renderVotingResults(isPublished ? bestDeckVotingState.results : null);
     if(isPublished){
+      setVotingHint('');
       votingDecksPoolEl.innerHTML = '';
       votingPlacesEl.innerHTML = '';
+      if(votingLayoutEl) votingLayoutEl.style.display = 'none';
+      if(votingErrorEl) votingErrorEl.style.display = 'none';
+      if(submitBestDeckVoteBtn?.parentElement) submitBestDeckVoteBtn.parentElement.style.display = 'none';
       submitBestDeckVoteBtn && (submitBestDeckVoteBtn.disabled = true);
       resetBestDeckVoteBtn && (resetBestDeckVoteBtn.disabled = true);
       return;
     }
+
+    if(votingLayoutEl) votingLayoutEl.style.display = '';
+    if(submitBestDeckVoteBtn?.parentElement) submitBestDeckVoteBtn.parentElement.style.display = '';
 
     renderVotingPlaces();
     const places = currentVotingPlaces();
@@ -1054,10 +1063,12 @@ async function ensureCardPreviewLoaded(){
       results: data.results || null,
     };
 
-    if(bestDeckVotingTitleEl && data.phase_title){
-      bestDeckVotingTitleEl.textContent = data.phase_title;
+    if(bestDeckVotingTitleEl){
+      bestDeckVotingTitleEl.textContent = data.phase_title || 'Best-Deck-Voting';
     }
-    setVotingHint(data.status_message || '');
+
+    const isPublished = String(data.voting_kind || '').trim() === 'results_published';
+    setVotingHint(isPublished ? '' : (data.status_message || ''));
 
     renderBestDeckVoting();
     if(bestDeckVotingState.votingKind === 'results_published' || bestDeckVotingState.votingKind === 'waiting_results') setVotingError('');
