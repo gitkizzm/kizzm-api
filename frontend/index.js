@@ -884,27 +884,24 @@ async function ensureCardPreviewLoaded(){
         ev.dataTransfer?.setData('text/plain', deckId);
       });
 
-      chip.addEventListener('touchstart', (ev) => {
-        ev.preventDefault();
+      chip.addEventListener('touchstart', () => {
         const deckId = chip.dataset.deckId;
         if(!deckId) return;
         touchDraggedDeckId = deckId;
         touchDraggedFromPlace = chip.closest('.report-dropzone')?.dataset?.place || null;
         chip.classList.add('is-touch-picked');
-      }, { passive: false });
+      }, { passive: true });
 
       chip.addEventListener('touchmove', (ev) => {
-        ev.preventDefault();
         if(!touchDraggedDeckId) return;
         const t = ev.touches?.[0];
         if(!t) return;
         const targetZone = zoneAtPoint(t.clientX, t.clientY);
         clearZoneHighlights();
         targetZone?.classList.add('is-over');
-      }, { passive: false });
+      }, { passive: true });
 
       chip.addEventListener('touchend', (ev) => {
-        ev.preventDefault();
         chip.classList.remove('is-touch-picked');
         if(!touchDraggedDeckId) return;
         const t = ev.changedTouches?.[0];
@@ -913,7 +910,7 @@ async function ensureCardPreviewLoaded(){
         if(targetZone) placeDeckInZone(touchDraggedDeckId, targetZone, touchDraggedFromPlace);
         touchDraggedDeckId = null;
         touchDraggedFromPlace = null;
-      }, { passive: false });
+      }, { passive: true });
     });
 
     zones.forEach((zone) => {
