@@ -1,14 +1,15 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 from fastapi.responses import HTMLResponse, JSONResponse
 
 
 def register_debug_routes(app: FastAPI, apply_step, notify_state_change) -> None:
     @app.get("/debug", response_class=HTMLResponse)
-    async def debug_get():
+    async def debug_get(skip_to: int | None = Query(default=None)):
         """
         Browser-friendly debug step runner.
+        Optional query param skip_to allows jumping to a later event step.
         """
-        result = await apply_step()
+        result = await apply_step(skip_to)
         await notify_state_change()
 
         lines = [
@@ -17,6 +18,10 @@ def register_debug_routes(app: FastAPI, apply_step, notify_state_change) -> None
             f"<p><strong>phase:</strong> {result.get('phase')}</p>",
             f"<p><strong>action:</strong> {result.get('action')}</p>",
         ]
+
+        if result.get("skip_to") is not None:
+            lines.append(f"<p><strong>skip_to:</strong> {result.get('skip_to')}</p>")
+            lines.append(f"<p><strong>step:</strong> {result.get('current_step')}</p>")
 
         if result.get("action") == "filled_decks_1_to_8":
             lines.append(f"<p>created_count: {result.get('created_count')}</p>")
@@ -52,15 +57,16 @@ def register_debug_routes(app: FastAPI, apply_step, notify_state_change) -> None
         if result.get("message"):
             lines.append(f"<p>{result.get('message')}</p>")
 
-        lines.append("<p style='margin-top:16px; opacity:0.7;'>Reload this page to advance the next step.</p>")
+        lines.append("<p style='margin-top:16px; opacity:0.7;'>Reload this page to advance the next step. Use ?skip_to=N to jump forward.</p>")
         lines.append("</body></html>")
         return HTMLResponse("\n".join(lines))
 
     @app.post("/debug")
-    async def debug_post():
+    async def debug_post(skip_to: int | None = Query(default=None)):
         """
         JSON-friendly debug step runner (keeps compatibility with your current setup).
+        Optional query param skip_to allows jumping to a later event step.
         """
-        result = await apply_step()
+        result = await apply_step(skip_to)
         await notify_state_change()
         return JSONResponse(result)
