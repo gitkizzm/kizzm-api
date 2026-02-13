@@ -2143,32 +2143,69 @@ async def development_results_overview(PDF: bool = False):
             return text.replace("\\", "\\\\").replace("(", "\\(").replace(")", "\\)")
 
         def _table_pdf_bytes(table_columns: list[str], table_rows: list[list[str]]) -> bytes:
-            lines = [" | ".join(table_columns)]
-            for row in table_rows:
-                lines.append(" | ".join(row))
-            normalized = [line[:220] for line in lines]
+            page_w, page_h = 842.0, 595.0  # A4 landscape in points
+            margin = 20.0
+            row_h = 14.0
+            font_size = 7.0
 
-            lines_per_page = 44
-            chunks = [normalized[i:i + lines_per_page] for i in range(0, len(normalized), lines_per_page)]
-            if not chunks:
-                chunks = [["Keine Daten vorhanden."]]
+            ncols = max(1, len(table_columns))
+            usable_w = max(100.0, page_w - (2 * margin))
+            col_w = usable_w / ncols
+
+            max_table_rows_per_page = max(2, int((page_h - (2 * margin)) // row_h))
+            body_rows_per_page = max(1, max_table_rows_per_page - 1)  # minus header row
+
+            if not table_rows:
+                chunks: list[list[list[str]]] = [[]]
+            else:
+                chunks = [
+                    table_rows[i:i + body_rows_per_page]
+                    for i in range(0, len(table_rows), body_rows_per_page)
+                ]
 
             objects: list[bytes] = []
 
-            # 1: Catalog, 2: Pages, 3: Font
+            # 1: Catalog, 2: Pages, 3: Font normal, 4: Font bold
             objects.append(b"<< /Type /Catalog /Pages 2 0 R >>")
             objects.append(b"__PAGES_PLACEHOLDER__")
             objects.append(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>")
+            objects.append(b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>")
 
             page_object_ids: list[int] = []
 
+            def _fit_cell_text(value: str, width: float) -> str:
+                char_w = 4.0
+                max_chars = max(1, int((width - 4.0) // char_w))
+                if len(value) <= max_chars:
+                    return value
+                if max_chars <= 1:
+                    return value[:1]
+                return value[: max_chars - 1] + "…"
+
             for chunk in chunks:
-                stream_lines = ["BT", "/F1 8 Tf", "36 560 Td", "12 TL"]
-                for line in chunk:
-                    stream_lines.append(f"({_pdf_escape(line)}) Tj")
-                    stream_lines.append("T*")
-                stream_lines.append("ET")
-                stream_data = "\n".join(stream_lines).encode("latin-1", errors="replace")
+                stream_ops: list[str] = []
+                y_top = page_h - margin
+
+                page_rows = [table_columns] + chunk
+                for row_idx, row_data in enumerate(page_rows):
+                    y_cell = y_top - ((row_idx + 1) * row_h)
+                    for col_idx in range(ncols):
+                        x_cell = margin + (col_idx * col_w)
+
+                        # Draw cell rectangle
+                        stream_ops.append(f"{x_cell:.2f} {y_cell:.2f} {col_w:.2f} {row_h:.2f} re S")
+
+                        raw_val = row_data[col_idx] if col_idx < len(row_data) else ""
+                        text = _fit_cell_text(str(raw_val), col_w)
+
+                        font_name = "/F2" if row_idx == 0 else "/F1"
+                        text_x = x_cell + 2.0
+                        text_y = y_cell + 4.0
+                        stream_ops.append(
+                            f"BT {font_name} {font_size:.1f} Tf 1 0 0 1 {text_x:.2f} {text_y:.2f} Tm ({_pdf_escape(text)}) Tj ET"
+                        )
+
+                stream_data = "\n".join(stream_ops).encode("latin-1", errors="replace")
 
                 content_obj_id = len(objects) + 1
                 objects.append(
@@ -2180,8 +2217,8 @@ async def development_results_overview(PDF: bool = False):
                 page_obj_id = len(objects) + 1
                 page_object_ids.append(page_obj_id)
                 page_obj = (
-                    f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 842 595] "
-                    f"/Resources << /Font << /F1 3 0 R >> >> /Contents {content_obj_id} 0 R >>"
+                    f"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 {page_w:.0f} {page_h:.0f}] "
+                    f"/Resources << /Font << /F1 3 0 R /F2 4 0 R >> >> /Contents {content_obj_id} 0 R >>"
                 ).encode("latin-1")
                 objects.append(page_obj)
 
