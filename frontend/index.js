@@ -812,6 +812,15 @@ async function ensureCardPreviewLoaded(){
     return Array.isArray(bestDeckVotingState?.places) ? bestDeckVotingState.places : [];
   }
 
+  function shuffleList(items){
+    const arr = Array.isArray(items) ? [...items] : [];
+    for(let idx = arr.length - 1; idx > 0; idx--){
+      const randIdx = Math.floor(Math.random() * (idx + 1));
+      [arr[idx], arr[randIdx]] = [arr[randIdx], arr[idx]];
+    }
+    return arr;
+  }
+
   function renderVotingDeck(deck){
     if(!deck) return '';
     const id = Number(deck.deck_id || 0) || 0;
@@ -856,11 +865,12 @@ async function ensureCardPreviewLoaded(){
     if(!bestDeckVotingState || !votingDecksPoolEl || !votingPlacesEl) return;
 
     const isPublished = bestDeckVotingState.votingKind === 'results_published';
+    const isWaitingResults = bestDeckVotingState.votingKind === 'waiting_results';
     const votingLayoutEl = bestDeckVotingRootEl?.querySelector('.voting-layout');
 
     renderVotingResults(isPublished ? bestDeckVotingState.results : null);
-    if(isPublished){
-      setVotingHint('');
+    if(isPublished || isWaitingResults){
+      if(isPublished) setVotingHint('');
       votingDecksPoolEl.innerHTML = '';
       votingPlacesEl.innerHTML = '';
       if(votingLayoutEl) votingLayoutEl.style.display = 'none';
@@ -1042,11 +1052,13 @@ async function ensureCardPreviewLoaded(){
     const data = await r.json();
     if(!r.ok) throw new Error(data?.detail || 'Voting konnte nicht geladen werden.');
 
-    const places = Array.isArray(data.places) ? data.places : [
+    const placesRaw = Array.isArray(data.places) ? data.places : [
       { id: '1', label: 'Rang 1' },
       { id: '2', label: 'Rang 2' },
       { id: '3', label: 'Rang 3' },
     ];
+    const votingKind = String(data.voting_kind || 'top3_fixed').trim();
+    const places = votingKind === 'deck_creator_guess' ? shuffleList(placesRaw) : placesRaw;
     const placements = {};
     for(const place of places){
       const placeId = String(place?.id || '').trim();
@@ -1055,8 +1067,8 @@ async function ensureCardPreviewLoaded(){
     }
 
     bestDeckVotingState = {
-      votingKind: String(data.voting_kind || 'top3_fixed').trim(),
-      candidates: data.candidates || [],
+      votingKind,
+      candidates: shuffleList(data.candidates || []),
       places,
       placements,
       hasVote: !!data.has_vote,
