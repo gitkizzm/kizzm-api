@@ -42,7 +42,16 @@ async function ensureCardPreviewLoaded(){
   const reportPlacesEl = document.getElementById("reportPlaces");
   const reportModalErrorEl = document.getElementById("reportModalError");
 
+  const bestDeckVotingRootEl = document.getElementById("bestDeckVoting");
+  const bestDeckVotingTitleEl = document.getElementById("bestDeckVotingTitle");
+  const votingDecksPoolEl = document.getElementById("votingDecksPool");
+  const votingPlacesEl = document.getElementById("votingPlaces");
+  const votingErrorEl = document.getElementById("votingError");
+  const submitBestDeckVoteBtn = document.getElementById("submitBestDeckVote");
+  const resetBestDeckVoteBtn = document.getElementById("resetBestDeckVote");
+
   let reportState = null;
+  let bestDeckVotingState = null;
 
   const commander1Input = document.getElementById("commander");
   const commander1Box = document.getElementById("commanderSuggestBox");
@@ -740,6 +749,253 @@ async function ensureCardPreviewLoaded(){
     });
   }
 
+
+  function setVotingError(msg){
+    if(!votingErrorEl) return;
+    const message = String(msg || '').trim();
+    votingErrorEl.textContent = message;
+    votingErrorEl.style.display = message ? 'block' : 'none';
+  }
+
+  function renderVotingDeck(deck){
+    if(!deck) return '';
+    const id = Number(deck.deck_id || 0) || 0;
+    const commander = String(deck.commander || '').trim();
+    const title = commander || `Deck #${id}`;
+    const avatarUrl = String(deck.avatar_url || '').trim();
+    const avatar = avatarUrl
+      ? `<img src="${escapeHtml(avatarUrl)}" alt="" class="report-player-avatar-img">`
+      : `<span class="report-player-avatar-fallback">${escapeHtml(String(title).slice(0, 1).toUpperCase())}</span>`;
+
+    return `<div class="report-player-chip report-player-chip--matchup report-player-chip--content-left report-player-chip--voting" draggable="true" data-deck-id="${id}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">
+      <div class="report-player-avatar">${avatar}</div>
+      <div class="report-player-name">${escapeHtml(title)}</div>
+    </div>`;
+  }
+
+  function votingCollectPlacements(){
+    const result = { '1': null, '2': null, '3': null };
+    for(const place of ['1','2','3']){
+      const zone = votingPlacesEl?.querySelector(`.report-dropzone[data-place="${place}"]`);
+      const chip = zone?.querySelector('.report-player-chip[data-deck-id]');
+      const value = Number(chip?.dataset?.deckId || '0') || 0;
+      result[place] = value > 0 ? value : null;
+    }
+    return result;
+  }
+
+  function renderBestDeckVoting(){
+    if(!bestDeckVotingState || !votingDecksPoolEl || !votingPlacesEl) return;
+
+    const placedIds = new Set(
+      Object.values(bestDeckVotingState.placements || {})
+        .map((it) => Number(it || 0))
+        .filter((it) => it > 0)
+    );
+
+    const poolDecks = (bestDeckVotingState.candidates || []).filter((deck) => !placedIds.has(Number(deck.deck_id || 0)));
+    votingDecksPoolEl.innerHTML = poolDecks.map(renderVotingDeck).join('');
+
+    for(const place of ['1','2','3']){
+      const zone = votingPlacesEl.querySelector(`.report-dropzone[data-place="${place}"]`);
+      if(!zone) continue;
+      const deckId = Number(bestDeckVotingState.placements?.[place] || 0) || 0;
+      const deck = (bestDeckVotingState.candidates || []).find((item) => Number(item.deck_id || 0) === deckId);
+      zone.innerHTML = deck ? renderVotingDeck(deck) : '';
+    }
+
+    const complete = ['1','2','3'].every((place) => Number(bestDeckVotingState.placements?.[place] || 0) > 0);
+    if(submitBestDeckVoteBtn) submitBestDeckVoteBtn.disabled = !complete || !!bestDeckVotingState.hasVote;
+    if(resetBestDeckVoteBtn) resetBestDeckVoteBtn.disabled = !!bestDeckVotingState.hasVote;
+
+    if(bestDeckVotingState.hasVote){
+      const allChips = Array.from(bestDeckVotingRootEl?.querySelectorAll('.report-player-chip') || []);
+      allChips.forEach((chip) => {
+        chip.setAttribute('draggable', 'false');
+        chip.classList.add('is-static');
+      });
+      return;
+    }
+
+    bindBestDeckVotingDraggable();
+  }
+
+  function bindBestDeckVotingDraggable(){
+    if(!bestDeckVotingState || !bestDeckVotingRootEl) return;
+
+    let touchDraggedDeckId = null;
+    let touchDraggedFromPlace = null;
+    let dragFromPlace = null;
+    const zones = [votingDecksPoolEl, ...Array.from(bestDeckVotingRootEl.querySelectorAll('.report-dropzone'))].filter(Boolean);
+
+    function clearZoneHighlights(){
+      zones.forEach((z) => z.classList.remove('is-over'));
+    }
+
+    function zoneAtPoint(clientX, clientY){
+      const el = document.elementFromPoint(clientX, clientY);
+      if(!el) return null;
+      return el.closest('#votingDecksPool, #bestDeckVoting .report-dropzone');
+    }
+
+    function isRankPlace(place){
+      return ['1', '2', '3'].includes(String(place || '').trim());
+    }
+
+    function placeDeckInZone(deckId, zone, sourcePlace = null){
+      const numericDeckId = Number(deckId || 0) || 0;
+      if(!numericDeckId || !zone || !bestDeckVotingState) return;
+
+      const targetPlace = String(zone.dataset.place || '').trim();
+      const normalizedSourcePlace = String(sourcePlace || '').trim();
+      const sourceIsRank = isRankPlace(normalizedSourcePlace);
+      const targetIsRank = isRankPlace(targetPlace);
+      const targetCurrentDeckId = targetIsRank ? (Number(bestDeckVotingState.placements?.[targetPlace] || 0) || null) : null;
+
+      for(const place of ['1','2','3']){
+        if(Number(bestDeckVotingState.placements?.[place] || 0) === numericDeckId){
+          bestDeckVotingState.placements[place] = null;
+        }
+      }
+
+      if(targetIsRank){
+        bestDeckVotingState.placements[targetPlace] = numericDeckId;
+
+        if(
+          sourceIsRank
+          && normalizedSourcePlace !== targetPlace
+          && targetCurrentDeckId
+          && targetCurrentDeckId !== numericDeckId
+        ){
+          bestDeckVotingState.placements[normalizedSourcePlace] = targetCurrentDeckId;
+        }
+      }
+
+      renderBestDeckVoting();
+      setVotingError('');
+    }
+
+    const chips = Array.from(bestDeckVotingRootEl.querySelectorAll('.report-player-chip[draggable="true"]'));
+    chips.forEach((chip) => {
+      chip.addEventListener('dragstart', (ev) => {
+        const deckId = chip.dataset.deckId;
+        if(!deckId) return;
+        dragFromPlace = chip.closest('.report-dropzone')?.dataset?.place || null;
+        ev.dataTransfer?.setData('text/plain', deckId);
+      });
+
+      chip.addEventListener('touchstart', () => {
+        const deckId = chip.dataset.deckId;
+        if(!deckId) return;
+        touchDraggedDeckId = deckId;
+        touchDraggedFromPlace = chip.closest('.report-dropzone')?.dataset?.place || null;
+        chip.classList.add('is-touch-picked');
+      }, { passive: true });
+
+      chip.addEventListener('touchmove', (ev) => {
+        if(!touchDraggedDeckId) return;
+        const t = ev.touches?.[0];
+        if(!t) return;
+        const targetZone = zoneAtPoint(t.clientX, t.clientY);
+        clearZoneHighlights();
+        targetZone?.classList.add('is-over');
+      }, { passive: true });
+
+      chip.addEventListener('touchend', (ev) => {
+        chip.classList.remove('is-touch-picked');
+        if(!touchDraggedDeckId) return;
+        const t = ev.changedTouches?.[0];
+        const targetZone = t ? zoneAtPoint(t.clientX, t.clientY) : null;
+        clearZoneHighlights();
+        if(targetZone) placeDeckInZone(touchDraggedDeckId, targetZone, touchDraggedFromPlace);
+        touchDraggedDeckId = null;
+        touchDraggedFromPlace = null;
+      }, { passive: true });
+    });
+
+    zones.forEach((zone) => {
+      if(zone.dataset.dragBound === '1') return;
+      zone.dataset.dragBound = '1';
+
+      zone.addEventListener('dragover', (ev) => {
+        ev.preventDefault();
+        zone.classList.add('is-over');
+      });
+      zone.addEventListener('dragleave', () => zone.classList.remove('is-over'));
+      zone.addEventListener('drop', (ev) => {
+        ev.preventDefault();
+        zone.classList.remove('is-over');
+        const deckId = ev.dataTransfer?.getData('text/plain');
+        placeDeckInZone(deckId, zone, dragFromPlace);
+        dragFromPlace = null;
+      });
+    });
+  }
+
+  async function loadBestDeckVotingData(){
+    const r = await fetch(`/api/voting/best-deck/current?deck_id=${encodeURIComponent(currentDeckId)}`, { cache: 'no-store' });
+    const data = await r.json();
+    if(!r.ok) throw new Error(data?.detail || 'Best-Deck-Voting konnte nicht geladen werden.');
+
+    bestDeckVotingState = {
+      candidates: data.candidates || [],
+      placements: {
+        '1': Number(data.placements?.['1'] || 0) || null,
+        '2': Number(data.placements?.['2'] || 0) || null,
+        '3': Number(data.placements?.['3'] || 0) || null,
+      },
+      hasVote: !!data.has_vote,
+    };
+
+    if(bestDeckVotingTitleEl && data.phase_title){
+      bestDeckVotingTitleEl.textContent = data.phase_title;
+    }
+
+    renderBestDeckVoting();
+    setVotingError(bestDeckVotingState.hasVote ? 'Voting wurde bereits bestätigt.' : '');
+  }
+
+  function initBestDeckVoting(){
+    if(!bestDeckVotingRootEl) return;
+
+    loadBestDeckVotingData().catch((err) => {
+      setVotingError(err?.message || 'Best-Deck-Voting konnte nicht geladen werden.');
+    });
+
+    resetBestDeckVoteBtn?.addEventListener('click', () => {
+      if(!bestDeckVotingState || bestDeckVotingState.hasVote) return;
+      bestDeckVotingState.placements = { '1': null, '2': null, '3': null };
+      setVotingError('');
+      renderBestDeckVoting();
+    });
+
+    submitBestDeckVoteBtn?.addEventListener('click', async () => {
+      if(!bestDeckVotingState || bestDeckVotingState.hasVote) return;
+
+      const placements = votingCollectPlacements();
+      const complete = ['1','2','3'].every((place) => Number(placements[place] || 0) > 0);
+      if(!complete){
+        setVotingError('Bitte Rang 1 bis 3 vollständig belegen.');
+        return;
+      }
+
+      try{
+        const r = await fetch('/api/voting/best-deck/submit', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ deck_id: currentDeckId, placements }),
+        });
+        const data = await r.json();
+        if(!r.ok) throw new Error(data?.detail || 'Best-Deck-Voting konnte nicht gespeichert werden.');
+        bestDeckVotingState.hasVote = true;
+        setVotingError('Voting erfolgreich bestätigt.');
+        renderBestDeckVoting();
+      }catch(err){
+        setVotingError(err?.message || 'Best-Deck-Voting konnte nicht gespeichert werden.');
+      }
+    });
+  }
+
   function wsUrl(params){
     const proto = (location.protocol === "https:") ? "wss" : "ws";
     return `${proto}://${location.host}/ws?${params}`;
@@ -864,6 +1120,7 @@ async function ensureCardPreviewLoaded(){
     updateSubmitEnabled();
 
     initReportModal();
+    initBestDeckVoting();
     hydratePairingMatchupChips();
 
     // start WS
