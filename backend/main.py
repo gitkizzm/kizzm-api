@@ -1948,9 +1948,11 @@ def _calculate_voting_results(raffle_list: list[dict], state: dict) -> dict:
                 top3_deck_points[deck_id] = top3_deck_points.get(deck_id, 0) + pts
 
     ranked_decks = sorted(top3_deck_points.items(), key=lambda x: (-x[1], x[0]))
+    # Deck-Voting-Punkte werden aus der Platzierung abgeleitet:
+    # Rank 1..8 => 8..1 Punkte, danach 0 Punkte.
     top3_bonus_by_owner = {owner: 0 for owner in owners}
     for idx, (deck_id, _pts) in enumerate(ranked_decks, start=1):
-        bonus = max(9 - idx, 1)
+        bonus = max(9 - idx, 0)
         deck_entry = next((e for e in raffle_list if int(e.get("deck_id") or 0) == deck_id), None)
         owner = (deck_entry.get("deckersteller") or "").strip() if deck_entry else ""
         if owner in top3_bonus_by_owner:
@@ -1983,7 +1985,7 @@ def _calculate_voting_results(raffle_list: list[dict], state: dict) -> dict:
     for owner in owners:
         built = built_by_owner.get(owner) or {}
         built_deck_id = int(built.get("deck_id") or 0)
-        deck_vote_points = top3_deck_points.get(built_deck_id, 0)
+        top3_received_vote_points = top3_deck_points.get(built_deck_id, 0)
         gameplay = gameplay_points.get(owner, 0)
         top3_bonus = top3_bonus_by_owner.get(owner, 0)
         guess_points = guess_points_by_owner.get(owner, 0)
@@ -1992,7 +1994,8 @@ def _calculate_voting_results(raffle_list: list[dict], state: dict) -> dict:
             "player": owner,
             "deck_name": _commander_label(built) if built else "-",
             "game_points": gameplay,
-            "deck_voting_points": deck_vote_points,
+            "deck_voting_points": top3_bonus,
+            "top3_received_vote_points": top3_received_vote_points,
             "guess_points": guess_points,
             "top3_overall_bonus": top3_bonus,
             "total_points": total,
@@ -2086,6 +2089,7 @@ async def development_results_overview():
         "best_deck_votes.{deck_id}.3",
         "calculated.top3_received_vote_points",
         "calculated.top3_received_rank",
+        "calculated.top3_rank_points_used_for_overall",
         "deck_creator_guess_votes.{deck_id}",
         "calculated.round_phase_points",
         "calculated.deck_creator_guess_points",
@@ -2128,6 +2132,7 @@ async def development_results_overview():
             "" if not top3_vote else str(top3_vote.get("3") or ""),
             str(top3_points_by_deck.get(deck_id, 0)),
             str(top3_rank_by_deck.get(deck_id, "")),
+            str(owner_result.get("deck_voting_points") or 0),
             "" if not deckrate_vote else json.dumps(deckrate_vote, ensure_ascii=False, sort_keys=True),
             str(owner_result.get("game_points") or 0),
             str(owner_result.get("guess_points") or 0),
