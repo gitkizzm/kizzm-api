@@ -86,21 +86,16 @@
             </div>
         {% else %}
         {% if existing_entry.pairing_phase == "voting" %}
-            <div class="status" style="margin-top: 12px;">
-                Hallo {{ deckOwner }}, bitte vote für deine Top 3.
+            <div class="status" id="votingHint" style="margin-top: 12px;">
+                Hallo {{ deckOwner }}.
             </div>
             <section class="voting-section" id="bestDeckVoting" data-voting-kind="best-deck" style="margin-top: 12px;">
                 <div class="report-layout voting-layout">
                     <div class="report-box" id="votingDecksPool"></div>
-                    <div class="report-box report-places voting-places" id="votingPlaces">
-                        {% for place in [1,2,3] %}
-                            <div class="report-place-slot" data-place="{{ place }}">
-                                <div class="report-dropzone" data-place="{{ place }}" data-place-label="Rang {{ place }}"></div>
-                            </div>
-                        {% endfor %}
-                    </div>
+                    <div class="report-box report-places voting-places" id="votingPlaces"></div>
                 </div>
                 <p id="votingError" class="field-error" style="display:none;"></p>
+                <div id="votingResults" style="display:none;"></div>
                 <div class="btn-row" style="margin-top: 10px;">
                     <button type="button" id="submitBestDeckVote">Bestätigen</button>
                     <button type="button" id="resetBestDeckVote" class="btn-ghost">Zurücksetzen</button>

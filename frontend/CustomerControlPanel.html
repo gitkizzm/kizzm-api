@@ -26,7 +26,11 @@
                 {% if pairings_phase == "playing" and active_round > 0 %}
                     <div class="status">Runde {{ active_round }} läuft</div>
                 {% elif pairings_phase == "voting" %}
-                    <div class="status danger">Spielphase beendet. Bitte jetzt das Voting starten.</div>
+                    {% if voting_results_published %}
+                        <div class="status ok">Voting abgeschlossen. Ergebnisse wurden veröffentlicht.</div>
+                    {% else %}
+                        <div class="status danger">Spielphase beendet. Voting läuft.</div>
+                    {% endif %}
                 {% endif %}
             {% else %}
                 <div class="status danger">Die Deckregistrierung läuft noch</div>
@@ -34,7 +38,9 @@
 
             {% if deck_count > 0 %}
                 <div class="status status-inline">
-                    {% if start_file_exists %}
+                    {% if start_file_exists and pairings_phase == "voting" %}
+                        {{ voting_done_count }} von {{ voting_total_count }} der Teilnehmer haben gevotet.
+                    {% elif start_file_exists %}
                         {{ confirmed_count }} von {{ deck_count }} der Decks wurden ausgeteilt.
                     {% else %}
                         Es sind {{ deck_count }} unterschiedliche Decks registriert.
@@ -109,6 +115,14 @@
                             </form>
                         </div>
                     {% endif %}
+                </div>
+            {% endif %}
+
+            {% if pairings_phase == "voting" and not voting_results_published %}
+                <div style="margin-top: 14px;">
+                    <form action="/publishVotingResults" method="post" style="margin:0;">
+                        <button type="submit" {% if voting_total_count == 0 or voting_done_count != voting_total_count %}disabled{% endif %}>Ergebnisse veröffentlichen</button>
+                    </form>
                 </div>
             {% endif %}
 
@@ -229,6 +243,7 @@
                 <label>Voting Scheme
                     <select id="voting_scheme_type" data-key="voting.scheme_type">
                         <option value="top3_fixed">top3_fixed</option>
+                        <option value="deck_creator_guess">deck_creator_guess</option>
                     </select>
                 </label>
 

@@ -47,6 +47,8 @@ async function ensureCardPreviewLoaded(){
   const votingDecksPoolEl = document.getElementById("votingDecksPool");
   const votingPlacesEl = document.getElementById("votingPlaces");
   const votingErrorEl = document.getElementById("votingError");
+  const votingHintEl = document.getElementById("votingHint");
+  const votingResultsEl = document.getElementById("votingResults");
   const submitBestDeckVoteBtn = document.getElementById("submitBestDeckVote");
   const resetBestDeckVoteBtn = document.getElementById("resetBestDeckVote");
 
@@ -757,6 +759,59 @@ async function ensureCardPreviewLoaded(){
     votingErrorEl.style.display = message ? 'block' : 'none';
   }
 
+  function setVotingHint(msg){
+    if(!votingHintEl) return;
+    const message = String(msg || '').trim();
+    votingHintEl.textContent = message;
+    votingHintEl.style.display = message ? 'block' : 'none';
+  }
+
+  function renderVotingResults(results){
+    if(!votingResultsEl) return;
+    const rows = Array.isArray(results?.rows) ? results.rows : [];
+    if(rows.length === 0){
+      votingResultsEl.style.display = 'none';
+      votingResultsEl.innerHTML = '';
+      return;
+    }
+    const body = rows.map((row, idx) => `
+      <tr>
+        <td>${idx + 1}</td>
+        <td>${escapeHtml(String(row.player || ''))}</td>
+        <td>${escapeHtml(String(row.deck_name || ''))}</td>
+        <td>${Number(row.game_points || 0)}</td>
+        <td>${Number(row.deck_voting_points || 0)}</td>
+        <td>${Number(row.guess_points || 0)}</td>
+        <td><strong>${Number(row.total_points || 0)}</strong></td>
+      </tr>
+    `).join('');
+    votingResultsEl.innerHTML = `
+      <div class="status" style="margin-top:10px;">
+        <strong>Overall-Auswertung</strong>
+        <div style="overflow:auto; margin-top:8px;">
+          <table style="width:100%; border-collapse: collapse; font-size: 0.95em;">
+            <thead>
+              <tr>
+                <th style="text-align:left; padding:4px;">#</th>
+                <th style="text-align:left; padding:4px;">Spieler</th>
+                <th style="text-align:left; padding:4px;">Deck</th>
+                <th style="text-align:right; padding:4px;">Spielpunkte</th>
+                <th style="text-align:right; padding:4px;">Deck-Voting</th>
+                <th style="text-align:right; padding:4px;">Ratepunkte</th>
+                <th style="text-align:right; padding:4px;">Gesamt</th>
+              </tr>
+            </thead>
+            <tbody>${body}</tbody>
+          </table>
+        </div>
+      </div>`;
+    votingResultsEl.style.display = 'block';
+  }
+
+  function currentVotingPlaces(){
+    return Array.isArray(bestDeckVotingState?.places) ? bestDeckVotingState.places : [];
+  }
+
   function renderVotingDeck(deck){
     if(!deck) return '';
     const id = Number(deck.deck_id || 0) || 0;
@@ -774,37 +829,64 @@ async function ensureCardPreviewLoaded(){
   }
 
   function votingCollectPlacements(){
-    const result = { '1': null, '2': null, '3': null };
-    for(const place of ['1','2','3']){
-      const zone = votingPlacesEl?.querySelector(`.report-dropzone[data-place="${place}"]`);
+    const result = {};
+    for(const place of currentVotingPlaces()){
+      const placeId = String(place?.id || '').trim();
+      if(!placeId) continue;
+      const zone = votingPlacesEl?.querySelector(`.report-dropzone[data-place="${CSS.escape(placeId)}"]`);
       const chip = zone?.querySelector('.report-player-chip[data-deck-id]');
       const value = Number(chip?.dataset?.deckId || '0') || 0;
-      result[place] = value > 0 ? value : null;
+      result[placeId] = value > 0 ? value : null;
     }
     return result;
+  }
+
+  function renderVotingPlaces(){
+    if(!votingPlacesEl) return;
+    const places = currentVotingPlaces();
+    votingPlacesEl.innerHTML = places.map((place) => {
+      const placeId = String(place?.id || '').trim();
+      const label = String(place?.label || placeId || '').trim();
+      if(!placeId) return '';
+      return `<div class="report-place-slot" data-place="${escapeHtml(placeId)}"><div class="report-dropzone" data-place="${escapeHtml(placeId)}" data-place-label="${escapeHtml(label)}"></div></div>`;
+    }).join('');
   }
 
   function renderBestDeckVoting(){
     if(!bestDeckVotingState || !votingDecksPoolEl || !votingPlacesEl) return;
 
+    const isPublished = bestDeckVotingState.votingKind === 'results_published';
+    renderVotingResults(isPublished ? bestDeckVotingState.results : null);
+    if(isPublished){
+      votingDecksPoolEl.innerHTML = '';
+      votingPlacesEl.innerHTML = '';
+      submitBestDeckVoteBtn && (submitBestDeckVoteBtn.disabled = true);
+      resetBestDeckVoteBtn && (resetBestDeckVoteBtn.disabled = true);
+      return;
+    }
+
+    renderVotingPlaces();
+    const places = currentVotingPlaces();
     const placedIds = new Set(
-      Object.values(bestDeckVotingState.placements || {})
-        .map((it) => Number(it || 0))
+      places
+        .map((place) => Number(bestDeckVotingState.placements?.[String(place.id || '').trim()] || 0))
         .filter((it) => it > 0)
     );
 
     const poolDecks = (bestDeckVotingState.candidates || []).filter((deck) => !placedIds.has(Number(deck.deck_id || 0)));
     votingDecksPoolEl.innerHTML = poolDecks.map(renderVotingDeck).join('');
 
-    for(const place of ['1','2','3']){
-      const zone = votingPlacesEl.querySelector(`.report-dropzone[data-place="${place}"]`);
+    for(const place of places){
+      const placeId = String(place?.id || '').trim();
+      if(!placeId) continue;
+      const zone = votingPlacesEl.querySelector(`.report-dropzone[data-place="${CSS.escape(placeId)}"]`);
       if(!zone) continue;
-      const deckId = Number(bestDeckVotingState.placements?.[place] || 0) || 0;
+      const deckId = Number(bestDeckVotingState.placements?.[placeId] || 0) || 0;
       const deck = (bestDeckVotingState.candidates || []).find((item) => Number(item.deck_id || 0) === deckId);
       zone.innerHTML = deck ? renderVotingDeck(deck) : '';
     }
 
-    const complete = ['1','2','3'].every((place) => Number(bestDeckVotingState.placements?.[place] || 0) > 0);
+    const complete = places.length > 0 && places.every((place) => Number(bestDeckVotingState.placements?.[String(place.id || '').trim()] || 0) > 0);
     if(submitBestDeckVoteBtn) submitBestDeckVoteBtn.disabled = !complete || !!bestDeckVotingState.hasVote;
     if(resetBestDeckVoteBtn) resetBestDeckVoteBtn.disabled = !!bestDeckVotingState.hasVote;
 
@@ -826,6 +908,7 @@ async function ensureCardPreviewLoaded(){
     let touchDraggedDeckId = null;
     let touchDraggedFromPlace = null;
     let dragFromPlace = null;
+    const places = currentVotingPlaces().map((place) => String(place?.id || '').trim()).filter(Boolean);
     const zones = [votingDecksPoolEl, ...Array.from(bestDeckVotingRootEl.querySelectorAll('.report-dropzone'))].filter(Boolean);
 
     function clearZoneHighlights(){
@@ -838,8 +921,8 @@ async function ensureCardPreviewLoaded(){
       return el.closest('#votingDecksPool, #bestDeckVoting .report-dropzone');
     }
 
-    function isRankPlace(place){
-      return ['1', '2', '3'].includes(String(place || '').trim());
+    function isPlace(place){
+      return places.includes(String(place || '').trim());
     }
 
     function placeDeckInZone(deckId, zone, sourcePlace = null){
@@ -849,7 +932,7 @@ async function ensureCardPreviewLoaded(){
       const targetPlace = String(zone.dataset.place || '').trim();
 
       let inferredSourcePlace = '';
-      for(const place of ['1','2','3']){
+      for(const place of places){
         if(Number(bestDeckVotingState.placements?.[place] || 0) === numericDeckId){
           inferredSourcePlace = place;
           break;
@@ -857,21 +940,21 @@ async function ensureCardPreviewLoaded(){
       }
 
       const normalizedSourcePlace = String(sourcePlace || inferredSourcePlace || '').trim();
-      const sourceIsRank = isRankPlace(normalizedSourcePlace);
-      const targetIsRank = isRankPlace(targetPlace);
-      const targetCurrentDeckId = targetIsRank ? (Number(bestDeckVotingState.placements?.[targetPlace] || 0) || null) : null;
+      const sourceIsPlace = isPlace(normalizedSourcePlace);
+      const targetIsPlace = isPlace(targetPlace);
+      const targetCurrentDeckId = targetIsPlace ? (Number(bestDeckVotingState.placements?.[targetPlace] || 0) || null) : null;
 
-      for(const place of ['1','2','3']){
+      for(const place of places){
         if(Number(bestDeckVotingState.placements?.[place] || 0) === numericDeckId){
           bestDeckVotingState.placements[place] = null;
         }
       }
 
-      if(targetIsRank){
+      if(targetIsPlace){
         bestDeckVotingState.placements[targetPlace] = numericDeckId;
 
         if(
-          sourceIsRank
+          sourceIsPlace
           && normalizedSourcePlace !== targetPlace
           && targetCurrentDeckId
           && targetCurrentDeckId !== numericDeckId
@@ -948,36 +1031,53 @@ async function ensureCardPreviewLoaded(){
   async function loadBestDeckVotingData(){
     const r = await fetch(`/api/voting/best-deck/current?deck_id=${encodeURIComponent(currentDeckId)}`, { cache: 'no-store' });
     const data = await r.json();
-    if(!r.ok) throw new Error(data?.detail || 'Best-Deck-Voting konnte nicht geladen werden.');
+    if(!r.ok) throw new Error(data?.detail || 'Voting konnte nicht geladen werden.');
+
+    const places = Array.isArray(data.places) ? data.places : [
+      { id: '1', label: 'Rang 1' },
+      { id: '2', label: 'Rang 2' },
+      { id: '3', label: 'Rang 3' },
+    ];
+    const placements = {};
+    for(const place of places){
+      const placeId = String(place?.id || '').trim();
+      if(!placeId) continue;
+      placements[placeId] = Number(data.placements?.[placeId] || 0) || null;
+    }
 
     bestDeckVotingState = {
+      votingKind: String(data.voting_kind || 'top3_fixed').trim(),
       candidates: data.candidates || [],
-      placements: {
-        '1': Number(data.placements?.['1'] || 0) || null,
-        '2': Number(data.placements?.['2'] || 0) || null,
-        '3': Number(data.placements?.['3'] || 0) || null,
-      },
+      places,
+      placements,
       hasVote: !!data.has_vote,
+      results: data.results || null,
     };
 
     if(bestDeckVotingTitleEl && data.phase_title){
       bestDeckVotingTitleEl.textContent = data.phase_title;
     }
+    setVotingHint(data.status_message || '');
 
     renderBestDeckVoting();
-    setVotingError(bestDeckVotingState.hasVote ? 'Voting wurde bereits bestätigt.' : '');
+    if(bestDeckVotingState.votingKind === 'results_published' || bestDeckVotingState.votingKind === 'waiting_results') setVotingError('');
+    else setVotingError(bestDeckVotingState.hasVote ? 'Voting wurde bereits bestätigt.' : '');
   }
 
   function initBestDeckVoting(){
     if(!bestDeckVotingRootEl) return;
 
     loadBestDeckVotingData().catch((err) => {
-      setVotingError(err?.message || 'Best-Deck-Voting konnte nicht geladen werden.');
+      setVotingError(err?.message || 'Voting konnte nicht geladen werden.');
     });
 
     resetBestDeckVoteBtn?.addEventListener('click', () => {
       if(!bestDeckVotingState || bestDeckVotingState.hasVote) return;
-      bestDeckVotingState.placements = { '1': null, '2': null, '3': null };
+      for(const place of currentVotingPlaces()){
+        const placeId = String(place?.id || '').trim();
+        if(!placeId) continue;
+        bestDeckVotingState.placements[placeId] = null;
+      }
       setVotingError('');
       renderBestDeckVoting();
     });
@@ -986,9 +1086,10 @@ async function ensureCardPreviewLoaded(){
       if(!bestDeckVotingState || bestDeckVotingState.hasVote) return;
 
       const placements = votingCollectPlacements();
-      const complete = ['1','2','3'].every((place) => Number(placements[place] || 0) > 0);
+      const places = currentVotingPlaces();
+      const complete = places.length > 0 && places.every((place) => Number(placements[String(place.id || '').trim()] || 0) > 0);
       if(!complete){
-        setVotingError('Bitte Rang 1 bis 3 vollständig belegen.');
+        setVotingError('Bitte alle Decks vollständig zuordnen.');
         return;
       }
 
@@ -999,12 +1100,11 @@ async function ensureCardPreviewLoaded(){
           body: JSON.stringify({ deck_id: currentDeckId, placements }),
         });
         const data = await r.json();
-        if(!r.ok) throw new Error(data?.detail || 'Best-Deck-Voting konnte nicht gespeichert werden.');
-        bestDeckVotingState.hasVote = true;
+        if(!r.ok) throw new Error(data?.detail || 'Voting konnte nicht gespeichert werden.');
+        await loadBestDeckVotingData();
         setVotingError('Voting erfolgreich bestätigt.');
-        renderBestDeckVoting();
       }catch(err){
-        setVotingError(err?.message || 'Best-Deck-Voting konnte nicht gespeichert werden.');
+        setVotingError(err?.message || 'Voting konnte nicht gespeichert werden.');
       }
     });
   }
