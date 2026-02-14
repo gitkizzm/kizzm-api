@@ -67,6 +67,8 @@
                         <div
                             class="report-player-chip report-player-chip--matchup report-player-chip--content-{{ content_align }} is-static"
                             data-player="{{ slot.player }}"
+                            data-commander="{{ pairing_player_meta.get(slot.player, {}).get('commander', '') }}"
+                            data-commander2="{{ pairing_player_meta.get(slot.player, {}).get('commander2', '') }}"
                             title="{{ slot.player }}"
                             aria-label="{{ slot.player }}">
                             <div class="report-player-avatar">
@@ -205,6 +207,32 @@
         <script src="/static/index.js" defer></script>
 
     </div>
+    {% if existing_entry and ((existing_entry.pairing_round and existing_entry.pairing_phase != "voting") or existing_entry.pairing_phase == "voting") %}
+    <div id="chipPreviewOverlay" class="chip-preview-overlay" style="display:none;">
+        <button type="button" id="chipPreviewOverlayClose" class="chip-preview-close" aria-label="Preview schließen">✕</button>
+        <div id="cardPreview" class="card-preview is-single" aria-hidden="true" data-reveal="0">
+            <div class="card3d slot1" data-slot="1">
+                <div class="card3d-face front"></div>
+                <div class="card3d-face back"></div>
+            </div>
+            <div class="card3d slot2 is-placeholder is-hidden" data-slot="2">
+                <div class="card3d-face front"></div>
+                <div class="card3d-face back"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal-overlay" id="chipPreviewModal" aria-hidden="true">
+        <div class="modal chip-preview-modal" role="dialog" aria-modal="true" aria-label="Card Preview">
+            <div id="chipPreviewModalCardHost"></div>
+            <div id="chipPreviewNames" class="chip-preview-names"></div>
+            <div class="modal-actions">
+                <button type="button" class="btn-ghost" id="chipPreviewModalClose">Schließen</button>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     <div class="modal-overlay" id="reportModal" aria-hidden="true">
         <div class="modal report-modal" role="dialog" aria-modal="true" aria-labelledby="reportModalTitle">
             <h2 id="reportModalTitle">Ergebnis melden</h2>

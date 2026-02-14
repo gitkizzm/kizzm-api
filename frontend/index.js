@@ -54,6 +54,17 @@ async function ensureCardPreviewLoaded(){
 
   let reportState = null;
   let bestDeckVotingState = null;
+  let chipPreviewUi = {
+    modalStyle: true,
+    revealAnimation: true,
+  };
+
+  const chipPreviewOverlayEl = document.getElementById('chipPreviewOverlay');
+  const chipPreviewOverlayCloseEl = document.getElementById('chipPreviewOverlayClose');
+  const chipPreviewModalEl = document.getElementById('chipPreviewModal');
+  const chipPreviewModalCloseEl = document.getElementById('chipPreviewModalClose');
+  const chipPreviewModalCardHostEl = document.getElementById('chipPreviewModalCardHost');
+  const chipPreviewNamesEl = document.getElementById('chipPreviewNames');
 
   const commander1Input = document.getElementById("commander");
   const commander1Box = document.getElementById("commanderSuggestBox");
@@ -365,6 +376,8 @@ async function ensureCardPreviewLoaded(){
         if(!player) return;
 
         const avatarUrl = playerMeta?.[player]?.avatar_url;
+        chip.dataset.commander = String(playerMeta?.[player]?.commander || '').trim();
+        chip.dataset.commander2 = String(playerMeta?.[player]?.commander2 || '').trim();
         const avatarEl = chip.querySelector('.report-player-avatar');
         const nameEl = chip.querySelector('.report-player-name');
         if(nameEl) nameEl.textContent = reportDisplayName(player);
@@ -379,6 +392,100 @@ async function ensureCardPreviewLoaded(){
     }catch(_){
       // Fallback bleibt bei servergerenderten Initialen.
     }
+  }
+
+  async function loadChipPreviewSettings(){
+    try{
+      const r = await fetch('/api/settings/effective', { cache: 'no-store' });
+      const data = await r.json();
+      if(!r.ok) return;
+      chipPreviewUi.modalStyle = !!data?.settings?.ui?.chip_preview_modal_style;
+      chipPreviewUi.revealAnimation = !!data?.settings?.ui?.chip_preview_reveal_animation;
+    }catch(_){
+      // defaults bleiben aktiv
+    }
+  }
+
+  function setChipPreviewNames(commander1, commander2){
+    if(!chipPreviewNamesEl) return;
+    const c1 = String(commander1 || '').trim();
+    const c2 = String(commander2 || '').trim();
+    const names = [c1, c2].filter(Boolean);
+    chipPreviewNamesEl.textContent = names.join(' / ');
+  }
+
+  function closeChipPreview(){
+    chipPreviewOverlayEl && (chipPreviewOverlayEl.style.display = 'none');
+    if(chipPreviewModalEl){
+      chipPreviewModalEl.classList.remove('show');
+      chipPreviewModalEl.setAttribute('aria-hidden', 'true');
+    }
+  }
+
+  async function showChipPreview(commander1, commander2){
+    const c1 = String(commander1 || '').trim();
+    const c2 = String(commander2 || '').trim();
+    if(!c1) return;
+
+    const previewEl = document.getElementById('cardPreview');
+    if(!previewEl) return;
+
+    if(chipPreviewUi.modalStyle){
+      if(chipPreviewModalCardHostEl && previewEl.parentElement !== chipPreviewModalCardHostEl){
+        chipPreviewModalCardHostEl.appendChild(previewEl);
+      }
+      if(chipPreviewOverlayEl) chipPreviewOverlayEl.style.display = 'none';
+      if(chipPreviewModalEl){
+        chipPreviewModalEl.classList.add('show');
+        chipPreviewModalEl.setAttribute('aria-hidden', 'false');
+      }
+    }else{
+      if(chipPreviewOverlayEl && previewEl.parentElement !== chipPreviewOverlayEl){
+        chipPreviewOverlayEl.appendChild(previewEl);
+      }
+      if(chipPreviewModalEl){
+        chipPreviewModalEl.classList.remove('show');
+        chipPreviewModalEl.setAttribute('aria-hidden', 'true');
+      }
+      if(chipPreviewOverlayEl) chipPreviewOverlayEl.style.display = 'block';
+    }
+
+    setChipPreviewNames(c1, c2);
+
+    await ensureCardPreviewLoaded();
+    cardPreview.initCardPreview();
+    cardPreview.setPartnerSlotEnabled(!!c2);
+
+    if(chipPreviewUi.revealAnimation){
+      await cardPreview.revealCommanders(c1, c2);
+    }else{
+      await cardPreview.setCommander1(c1);
+      if(c2) await cardPreview.setCommander2(c2);
+    }
+  }
+
+  function bindChipPreviewEvents(){
+    const roots = [document.querySelector('.pairing-matchup-grid'), bestDeckVotingRootEl].filter(Boolean);
+    if(roots.length === 0) return;
+
+    roots.forEach((root) => {
+      root.addEventListener('click', (ev) => {
+        const avatarEl = ev.target instanceof Element ? ev.target.closest('.report-player-avatar') : null;
+        if(!avatarEl) return;
+        const chip = avatarEl.closest('.report-player-chip');
+        if(!chip) return;
+        const commander1 = String(chip.dataset?.commander || '').trim();
+        const commander2 = String(chip.dataset?.commander2 || '').trim();
+        if(!commander1) return;
+        showChipPreview(commander1, commander2).catch(() => {});
+      });
+    });
+
+    chipPreviewOverlayCloseEl?.addEventListener('click', closeChipPreview);
+    chipPreviewModalCloseEl?.addEventListener('click', closeChipPreview);
+    chipPreviewModalEl?.addEventListener('click', (ev) => {
+      if(ev.target === chipPreviewModalEl) closeChipPreview();
+    });
   }
 
   function reportCollectPlacements(){
@@ -825,13 +932,15 @@ async function ensureCardPreviewLoaded(){
     if(!deck) return '';
     const id = Number(deck.deck_id || 0) || 0;
     const commander = String(deck.commander || '').trim();
+    const commander1 = String(deck.commander1 || '').trim();
+    const commander2 = String(deck.commander2 || '').trim();
     const title = commander || `Deck #${id}`;
     const avatarUrl = String(deck.avatar_url || '').trim();
     const avatar = avatarUrl
       ? `<img src="${escapeHtml(avatarUrl)}" alt="" class="report-player-avatar-img">`
       : `<span class="report-player-avatar-fallback">${escapeHtml(String(title).slice(0, 1).toUpperCase())}</span>`;
 
-    return `<div class="report-player-chip report-player-chip--matchup report-player-chip--content-left report-player-chip--voting" draggable="true" data-deck-id="${id}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">
+    return `<div class="report-player-chip report-player-chip--matchup report-player-chip--content-left report-player-chip--voting" draggable="true" data-deck-id="${id}" data-commander="${escapeHtml(commander1 || commander)}" data-commander2="${escapeHtml(commander2)}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">
       <div class="report-player-avatar">${avatar}</div>
       <div class="report-player-name">${escapeHtml(title)}</div>
     </div>`;
@@ -1257,7 +1366,13 @@ async function ensureCardPreviewLoaded(){
 
     initReportModal();
     initBestDeckVoting();
-    hydratePairingMatchupChips();
+    await hydratePairingMatchupChips();
+    await loadChipPreviewSettings();
+    bindChipPreviewEvents();
+
+    document.addEventListener('keydown', (ev) => {
+      if(ev.key === 'Escape') closeChipPreview();
+    });
 
     // start WS
     connectWS();
