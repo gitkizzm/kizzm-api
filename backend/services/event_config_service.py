@@ -66,7 +66,21 @@ class APISettings(BaseModel):
 
 class VotingSettings(BaseModel):
     scheme_type: str = "top3_fixed"
-    points_scheme: dict[str, int] = Field(default_factory=lambda: {"first": 3, "second": 2, "third": 1})
+    points_scheme: dict[str, Any] = Field(default_factory=lambda: {
+        "play_phase": {"1": 4, "2": 3, "3": 2, "4": 1},
+        "best_deck_voting": {"1": 3, "2": 2, "3": 1},
+        "best_deck_overall": {
+            "1": 8,
+            "2": 5,
+            "3": 3,
+            "4": 2,
+            "5": 1,
+            "6": 0,
+            "7": 0,
+            "8": 0,
+        },
+        "deck_creator_guess": {"correct_guess": 1},
+    })
 
 
 class EventSettings(BaseModel):
