@@ -1000,7 +1000,7 @@ async function ensureCardPreviewLoaded(){
     votingHintEl.style.display = message ? 'block' : 'none';
   }
 
-  function renderVotingResults(results){
+  function renderVotingResults(results, kind){
     if(!votingResultsEl) return;
     const rows = Array.isArray(results?.rows) ? results.rows : [];
     if(rows.length === 0){
@@ -1008,6 +1008,35 @@ async function ensureCardPreviewLoaded(){
       votingResultsEl.innerHTML = '';
       return;
     }
+
+    if(kind === 'pre_voting_overview'){
+      const body = rows.map((row, idx) => `
+        <tr>
+          <td style="padding:4px;">${Number(row.rank || (idx + 1) || 0)}</td>
+          <td style="padding:4px;">${escapeHtml(String(row.player || ''))}</td>
+          <td style="padding:4px; text-align:right;">${Number(row.game_points || 0)}</td>
+        </tr>
+      `).join('');
+      votingResultsEl.innerHTML = `
+        <div class="status" style="margin-top:10px;">
+          <strong>Vorabauswertung Spielphase</strong>
+          <div style="overflow:auto; margin-top:8px;">
+            <table style="width:100%; border-collapse: collapse; font-size: 0.95em;">
+              <thead>
+                <tr>
+                  <th style="text-align:left; padding:4px;">Platz</th>
+                  <th style="text-align:left; padding:4px;">Spieler</th>
+                  <th style="text-align:right; padding:4px;">Spielphase-Punkte</th>
+                </tr>
+              </thead>
+              <tbody>${body}</tbody>
+            </table>
+          </div>
+        </div>`;
+      votingResultsEl.style.display = 'block';
+      return;
+    }
+
     const body = rows.map((row, idx) => `
       <tr>
         <td>${idx + 1}</td>
@@ -1102,13 +1131,20 @@ async function ensureCardPreviewLoaded(){
 
     const isPublished = bestDeckVotingState.votingKind === 'results_published';
     const isWaitingResults = bestDeckVotingState.votingKind === 'waiting_results';
+    const isPreVotingOverview = bestDeckVotingState.votingKind === 'pre_voting_overview';
     const votingLayoutEl = bestDeckVotingRootEl?.querySelector('.voting-layout');
+    bestDeckVotingRootEl?.classList.toggle('voting-waiting-mode', isWaitingResults);
+    bestDeckVotingRootEl?.classList.toggle('voting-preview-mode', isPreVotingOverview);
 
-    renderVotingResults(isPublished ? bestDeckVotingState.results : null);
-    if(isPublished || isWaitingResults){
-      if(isPublished) setVotingHint('');
+    renderVotingResults((isPublished || isPreVotingOverview) ? bestDeckVotingState.results : null, bestDeckVotingState.votingKind);
+    if(isPublished || isWaitingResults || isPreVotingOverview){
+      if(isPublished || isPreVotingOverview) setVotingHint('');
       votingDecksPoolEl.innerHTML = '';
       votingPlacesEl.innerHTML = '';
+      if(isWaitingResults && votingResultsEl){
+        votingResultsEl.innerHTML = '';
+        votingResultsEl.style.display = 'none';
+      }
       if(votingLayoutEl) votingLayoutEl.style.display = 'none';
       if(votingErrorEl) votingErrorEl.style.display = 'none';
       if(submitBestDeckVoteBtn?.parentElement) submitBestDeckVoteBtn.parentElement.style.display = 'none';
@@ -1315,11 +1351,13 @@ async function ensureCardPreviewLoaded(){
       bestDeckVotingTitleEl.textContent = data.phase_title || 'Best-Deck-Voting';
     }
 
-    const isPublished = String(data.voting_kind || '').trim() === 'results_published';
-    setVotingHint(isPublished ? '' : (data.status_message || ''));
+    const votingKindRaw = String(data.voting_kind || '').trim();
+    const isPublished = votingKindRaw === 'results_published';
+    const isPreVotingOverview = votingKindRaw === 'pre_voting_overview';
+    setVotingHint((isPublished || isPreVotingOverview) ? '' : (data.status_message || ''));
 
     renderBestDeckVoting();
-    if(bestDeckVotingState.votingKind === 'results_published' || bestDeckVotingState.votingKind === 'waiting_results') setVotingError('');
+    if(['results_published', 'waiting_results', 'pre_voting_overview'].includes(bestDeckVotingState.votingKind)) setVotingError('');
     else setVotingError(bestDeckVotingState.hasVote ? 'Voting wurde bereits bestätigt.' : '');
   }
 
