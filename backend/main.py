@@ -1500,12 +1500,8 @@ async def customer_control_panel(request: Request):
     settings = _current_settings()
 
     deck_count = -1
-
-    # Behalte deckersteller-Liste explizit (für "vor Start"-UI)
-    deckersteller = []
-
-    # Neu für "nach Start"-UI
-    tooltip_items = []
+    deckersteller: list[str] = []
+    tooltip_items: list[dict] = []
     confirmed_count = 0
     total_decks = 0
     voting_done_count = 0
@@ -1517,7 +1513,11 @@ async def customer_control_panel(request: Request):
     pairings_phase = pair.get("phase") or ("ready" if all_confirmed else None)
     active_round = int(pair.get("active_round") or 0) if pair else 0
     pairings_started = bool(pair) and active_round > 0
-    voting_results_published = bool(_published_voting_results(pair)) if isinstance(pair, dict) else False
+
+    published_results = _published_voting_results(pair) if isinstance(pair, dict) else None
+    voting_results_published = bool(published_results)
+    voting_results_rows = (published_results or {}).get("rows") or []
+
     active_round_status = _round_report_status(pair, active_round) if pairings_phase == "playing" and active_round > 0 else {
         "table_count": 0,
         "reported_count": 0,
@@ -1531,7 +1531,6 @@ async def customer_control_panel(request: Request):
         active_round_status.get("all_tables_reported") and completion_entry.get("completed_at")
     )
 
-    # für Host-Auswahl (nur sinnvoll nach Start + alle bestätigt)
     players = _deckowners(raffle_list) if start_file_exists else []
     selected_hosts = (pair.get("hosts") or []) if isinstance(pair, dict) else []
 
@@ -1566,13 +1565,10 @@ async def customer_control_panel(request: Request):
             with FILE_PATH.open("r", encoding="utf-8") as f:
                 content = json.load(f)
                 if isinstance(content, list):
-
                     if start_file_exists:
-                        # NACH Start: Owners + Status
                         total_decks = len([e for e in content if e.get("deck_id") is not None])
-                        deck_count = total_decks  # Y
-
-                        confirmed_count = sum(1 for e in content if e.get("received_confirmed") is True)  # X
+                        deck_count = total_decks
+                        confirmed_count = sum(1 for e in content if e.get("received_confirmed") is True)
 
                         if pairings_phase == "voting":
                             top3_votes = (pair.get("best_deck_votes") or {}) if isinstance(pair, dict) else {}
@@ -1602,40 +1598,119 @@ async def customer_control_panel(request: Request):
                                 ],
                                 key=lambda x: x["name"].lower()
                             )
-
                     else:
-                        # VOR Start: Deckersteller wie bisher
                         deckersteller = sorted({
                             entry.get("deckersteller")
                             for entry in content
                             if entry.get("deckersteller")
                         })
                         deck_count = len(deckersteller)
-
-                        # optional: tooltip_items trotzdem füllen, falls du im Template vereinheitlichen willst
                         tooltip_items = [{"name": n, "received_confirmed": False} for n in deckersteller]
                         confirmed_count = 0
-
         except (json.JSONDecodeError, ValueError):
             pass
+
+    phase_name = "Deckregistrierung"
+    if start_file_exists and not all_confirmed:
+        phase_name = "Deckverteilung"
+    elif start_file_exists and all_confirmed and not pairings_started:
+        phase_name = "Warten auf Pairings"
+    elif pairings_phase == "playing" and active_round > 0:
+        phase_name = f"Spielrunde {active_round}"
+    elif pairings_phase == "pre_voting":
+        phase_name = "Warten auf Voting"
+    elif pairings_phase == "voting" and not voting_results_published:
+        phase_name = "Voting läuft"
+    elif voting_results_published:
+        phase_name = "Event abgeschlossen"
+
+    if not start_file_exists:
+        phase_status_text = "Deckregistrierung läuft."
+    elif not all_confirmed:
+        phase_status_text = f"{confirmed_count} von {deck_count if deck_count >= 0 else 0} Decks wurden bestätigt verteilt."
+    elif not pairings_started:
+        phase_status_text = "Alle Decks bestätigt. Pairings können gestartet werden."
+    elif pairings_phase == "playing":
+        if active_round_status.get("all_tables_reported"):
+            phase_status_text = f"Runde {active_round}: alle Tische haben gemeldet."
+        else:
+            missing = ", ".join([f"Tisch {t}" for t in active_round_status.get("missing_tables") or []])
+            phase_status_text = f"Runde {active_round}: es fehlen Meldungen ({missing or 'n/a'})."
+    elif pairings_phase == "pre_voting":
+        phase_status_text = "Vorabauswertung ist sichtbar. Voting kann manuell gestartet werden."
+    elif pairings_phase == "voting" and not voting_results_published:
+        if voting_total_count > 0 and voting_done_count == voting_total_count:
+            phase_status_text = "Alle Teilnehmer haben gevotet."
+        else:
+            phase_status_text = f"{voting_done_count} von {voting_total_count} Teilnehmern haben gevotet."
+    else:
+        phase_status_text = "Overall-Ergebnisse sind veröffentlicht."
+
+    primary_action = {
+        "label": "Raffle starten",
+        "action": "/startRaffle",
+        "kind": "start_raffle",
+        "disabled": bool(deck_count < settings.min_decks_to_start or start_file_exists),
+    }
+    if start_file_exists:
+        if not all_confirmed:
+            primary_action = {
+                "label": "Pairings starten",
+                "action": "/startPairings",
+                "kind": "start_pairings",
+                "disabled": True,
+            }
+        elif not pairings_started:
+            primary_action = {
+                "label": "Pairings starten",
+                "action": "/startPairings",
+                "kind": "start_pairings",
+                "disabled": False,
+            }
+        elif pairings_phase == "playing":
+            primary_action = {
+                "label": "Nächste Runde starten",
+                "action": "/nextRound",
+                "kind": "next_round",
+                "disabled": bool(not active_round_status.get("all_tables_reported")),
+            }
+        elif pairings_phase == "pre_voting":
+            primary_action = {
+                "label": "Votings starten",
+                "action": "/startVotingPhase",
+                "kind": "start_voting",
+                "disabled": False,
+            }
+        elif pairings_phase == "voting" and not voting_results_published:
+            primary_action = {
+                "label": "Ergebnisse veröffentlichen",
+                "action": "/publishVotingResults",
+                "kind": "publish_results",
+                "disabled": bool(voting_total_count == 0 or voting_done_count != voting_total_count),
+            }
+        else:
+            primary_action = {
+                "label": "Event abgeschlossen",
+                "action": "",
+                "kind": "done",
+                "disabled": True,
+            }
+
+    end_play_disabled = bool(pairings_phase != "playing" or not pairings_started)
 
     return templates.TemplateResponse(
         "CustomerControlPanel.html",
         {
             "request": request,
             "start_file_exists": start_file_exists,
-
-            # alt (bleibt erhalten)
             "deck_count": deck_count,
             "deckersteller": deckersteller,
-
-            # neu
             "confirmed_count": confirmed_count,
             "tooltip_items": tooltip_items,
             "voting_done_count": voting_done_count,
             "voting_total_count": voting_total_count,
             "voting_results_published": voting_results_published,
-
+            "voting_results_rows": voting_results_rows,
             "all_confirmed": all_confirmed,
             "pairings_started": pairings_started,
             "pairings_phase": pairings_phase,
@@ -1650,6 +1725,10 @@ async def customer_control_panel(request: Request):
             "active_round_reported_count": active_round_status.get("reported_count") or 0,
             "active_round_table_count": active_round_status.get("table_count") or 0,
             "active_round_reports_persisted": active_round_reports_persisted,
+            "phase_name": phase_name,
+            "phase_status_text": phase_status_text,
+            "primary_action": primary_action,
+            "end_play_disabled": end_play_disabled,
         }
     )
 
@@ -2024,7 +2103,11 @@ async def background_commander(name: str = ""):
         return JSONResponse({"url": None, "zoom": settings.ui.commander_bg_zoom})
 
     safe = name.replace('"', '\\"')
-    q_template = settings.scryfall.commander_preview_query_template or 'game:paper is:commander !"{name}"'
+    q_template = (
+        settings.scryfall.card_preview_query_template
+        or settings.scryfall.commander_preview_query_template
+        or 'game:paper is:commander !"{name}"'
+    )
     q = q_template.replace('{name}', safe)
 
     url = (

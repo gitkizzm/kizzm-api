@@ -12,182 +12,182 @@
 
         <div class="ccp-tabs" role="tablist" aria-label="Control Panel Tabs">
             <button type="button" class="ccp-tab is-active" data-tab="controls" role="tab" aria-selected="true">Controls</button>
-            <button type="button" class="ccp-tab" data-tab="settings" role="tab" aria-selected="false">Settings</button>
+            <button type="button" class="ccp-tab" data-tab="settings" role="tab" aria-selected="false">Config</button>
         </div>
 
         <section class="ccp-panel is-active" data-panel="controls">
-            {% if start_file_exists %}
-                {% if all_confirmed %}
-                    <div class="status ok">Alle Decks wurden verteilt</div>
+            <div class="status">
+                <strong>Aktuelle Phase</strong>
+                <div style="margin-top:6px;">{{ phase_name }}</div>
+            </div>
+
+            <div class="status" style="margin-top: 12px;">
+                <strong>Phasenstatus / Details</strong>
+                <div style="margin-top:6px;">{{ phase_status_text }}</div>
+
+                {% if voting_results_published and voting_results_rows %}
+                    <div style="overflow:auto; margin-top:10px;">
+                        <table style="width:100%; border-collapse: collapse; font-size: 0.95em;">
+                            <thead>
+                                <tr>
+                                    <th style="text-align:left; padding:4px;">#</th>
+                                    <th style="text-align:left; padding:4px;">Spieler</th>
+                                    <th style="text-align:left; padding:4px;">Deck</th>
+                                    <th style="text-align:right; padding:4px;">Spielpunkte</th>
+                                    <th style="text-align:right; padding:4px;">Deck-Voting</th>
+                                    <th style="text-align:right; padding:4px;">Ratepunkte</th>
+                                    <th style="text-align:right; padding:4px;">Gesamt</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in voting_results_rows %}
+                                    <tr>
+                                        <td style="padding:4px;">{{ loop.index }}</td>
+                                        <td style="padding:4px;">{{ row.player }}</td>
+                                        <td style="padding:4px;">{{ row.deck_name }}</td>
+                                        <td style="padding:4px; text-align:right;">{{ row.game_points }}</td>
+                                        <td style="padding:4px; text-align:right;">{{ row.deck_voting_points }}</td>
+                                        <td style="padding:4px; text-align:right;">{{ row.guess_points }}</td>
+                                        <td style="padding:4px; text-align:right;"><strong>{{ row.total_points }}</strong></td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
                 {% else %}
-                    <div class="status ok">Der Raffle ist gestartet</div>
-                {% endif %}
+                    {% if deck_count > 0 %}
+                        <div class="status status-inline" style="margin-top:10px;">
+                            {% if start_file_exists and pairings_phase == "voting" %}
+                                {% if voting_total_count > 0 and voting_done_count == voting_total_count %}
+                                    Alle Teilnehmer haben gevotet.
+                                {% else %}
+                                    {{ voting_done_count }} von {{ voting_total_count }} der Teilnehmer haben gevotet.
+                                {% endif %}
+                            {% elif start_file_exists and pairings_phase == "pre_voting" %}
+                                Vorabauswertung verfügbar. Voting kann manuell gestartet werden.
+                            {% elif start_file_exists %}
+                                {{ confirmed_count }} von {{ deck_count }} der Decks wurden ausgeteilt.
+                            {% else %}
+                                Es sind {{ deck_count }} unterschiedliche Decks registriert.
+                            {% endif %}
 
-                {% if pairings_phase == "playing" and active_round > 0 %}
-                    <div class="status">Runde {{ active_round }} läuft</div>
-                {% elif pairings_phase == "pre_voting" %}
-                    <div class="status">Spielphase beendet. Vorabauswertung aktiv, Voting noch nicht gestartet.</div>
-                {% elif pairings_phase == "voting" %}
-                    {% if voting_results_published %}
-                        <div class="status ok">Voting abgeschlossen. Ergebnisse wurden veröffentlicht.</div>
-                    {% else %}
-                        <div class="status danger">Spielphase beendet. Voting läuft.</div>
-                    {% endif %}
-                {% endif %}
-            {% else %}
-                <div class="status danger">Die Deckregistrierung läuft noch</div>
-            {% endif %}
-
-            {% if deck_count > 0 %}
-                <div class="status status-inline">
-                    {% if start_file_exists and pairings_phase == "voting" %}
-                        {{ voting_done_count }} von {{ voting_total_count }} der Teilnehmer haben gevotet.
-                    {% elif start_file_exists and pairings_phase == "pre_voting" %}
-                        Vorabauswertung verfügbar. Voting kann manuell gestartet werden.
-                    {% elif start_file_exists %}
-                        {{ confirmed_count }} von {{ deck_count }} der Decks wurden ausgeteilt.
-                    {% else %}
-                        Es sind {{ deck_count }} unterschiedliche Decks registriert.
-                    {% endif %}
-
-                    <span class="info-wrap">
-                        <button type="button" class="info-btn" aria-label="Info">i</button>
-                        <div class="info-tooltip">
-                            {% for it in tooltip_items %}
-                                <div class="tooltip-item">
-                                    {% if start_file_exists %}
-                                        <span class="recv-icon {% if it.received_confirmed %}is-ok{% else %}is-pending{% endif %}">
-                                            {% if it.received_confirmed %}✓{% else %}?{% endif %}
-                                        </span>
-                                    {% endif %}
-                                    {{ it.name }}
+                            <span class="info-wrap">
+                                <button type="button" class="info-btn" aria-label="Info">i</button>
+                                <div class="info-tooltip">
+                                    {% for it in tooltip_items %}
+                                        <div class="tooltip-item">
+                                            {% if start_file_exists %}
+                                                <span class="recv-icon {% if it.received_confirmed %}is-ok{% else %}is-pending{% endif %}">
+                                                    {% if it.received_confirmed %}✓{% else %}?{% endif %}
+                                                </span>
+                                            {% endif %}
+                                            {{ it.name }}
+                                        </div>
+                                    {% endfor %}
                                 </div>
+                            </span>
+                        </div>
+                    {% elif deck_count == 0 %}
+                        <div class="status danger" style="margin-top:10px;">Es sind noch keine Decks eingetragen.</div>
+                    {% else %}
+                        <div class="status danger" style="margin-top:10px;">Die Datei raffle.json existiert nicht.</div>
+                    {% endif %}
+
+                    {% if pairings_phase == "playing" and active_round > 0 and round_tables %}
+                        <div style="margin-top: 12px;">
+                            <strong>Rundenreport zurücksetzen (Runde {{ active_round }})</strong>
+                            <div style="margin-top: 10px; display: grid; gap: 8px;">
+                                {% for table in round_tables %}
+                                    <div class="round-report-row">
+                                        <div class="round-report-title-wrap">
+                                            <div>
+                                                Tisch {{ table.table }}
+                                                {% if table.has_report and table.placement_summary %}
+                                                    · {{ table.placement_summary }}
+                                                {% else %}
+                                                    · kein Ergebnis
+                                                {% endif %}
+                                            </div>
+                                            {% if table.has_report and table.placement_items %}
+                                                <span class="info-wrap round-report-info-wrap">
+                                                    <button type="button" class="info-btn" aria-label="Platzierungen anzeigen">i</button>
+                                                    <div class="info-tooltip">
+                                                        {% for item in table.placement_items %}
+                                                            <div class="tooltip-item">{{ item.place }}. {{ item.player }}</div>
+                                                        {% endfor %}
+                                                    </div>
+                                                </span>
+                                            {% endif %}
+                                        </div>
+                                        <form action="/resetRoundReport" method="post" style="margin:0;">
+                                            <input type="hidden" name="round_no" value="{{ active_round }}">
+                                            <input type="hidden" name="table_no" value="{{ table.table }}">
+                                            <button type="submit" {% if not table.has_report %}disabled{% endif %}>Meldung zurücksetzen</button>
+                                        </form>
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    {% endif %}
+                {% endif %}
+            </div>
+
+            {% if primary_action.kind == "start_pairings" and start_file_exists and all_confirmed %}
+                <form id="primaryActionForm" action="/startPairings" method="post" class="row" style="gap:10px; margin-top:14px;">
+                    <label for="numPods">Anzahl Pods / Tische:</label>
+                    <input type="number" id="numPods" name="num_pods" min="1" step="1" value="{{ default_num_pods }}" {% if primary_action.disabled %}disabled{% endif %}>
+                    <label for="hosts">Hosts (Startplätze):</label>
+                    <div id="hostsMultiselect" class="multiselect" data-placeholder="Hosts auswählen">
+                        <button type="button" id="hostsToggle" class="multiselect-toggle" aria-haspopup="listbox" aria-expanded="false" aria-controls="hostsDropdown" {% if primary_action.disabled %}disabled{% endif %}>
+                            Hosts auswählen
+                        </button>
+                        <div id="hostsDropdown" class="multiselect-dropdown" role="listbox" aria-multiselectable="true" hidden>
+                            {% for p in players %}
+                                <label class="multiselect-option" role="option" aria-selected="{% if p in selected_hosts %}true{% else %}false{% endif %}">
+                                    <input type="checkbox" value="{{ p }}" {% if p in selected_hosts %}checked{% endif %} {% if primary_action.disabled %}disabled{% endif %}>
+                                    <span>{{ p }}</span>
+                                </label>
                             {% endfor %}
                         </div>
-                    </span>
+                        <select id="hosts" name="hosts" multiple hidden aria-hidden="true" tabindex="-1">
+                            {% for p in players %}
+                                <option value="{{ p }}" {% if p in selected_hosts %}selected{% endif %}>{{ p }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="status" style="margin:0; font-size: 0.95em;">
+                        Optional: Wähle pro Tisch einen Host aus. Hosts werden in Runde 1 zuerst auf verschiedene Tische gesetzt.
+                    </div>
+
+                </form>
+                <div class="btn-row ccp-main-actions" style="margin-top:14px;">
+                    <form id="endPlayPhaseForm" action="/endPlayPhase" method="post" style="margin:0;">
+                        <button type="button" id="openEndPlayPhaseModal" {% if end_play_disabled %}disabled{% endif %}>Spielphase beenden</button>
+                    </form>
+                    <button type="submit" form="primaryActionForm" {% if primary_action.disabled %}disabled{% endif %}>{{ primary_action.label }}</button>
                 </div>
             {% else %}
-                {% if deck_count == 0 %}
-                    <div class="status danger">Es sind noch keine Decks eingetragen.</div>
-                {% else %}
-                    <div class="status danger">Die Datei raffle.json existiert nicht.</div>
-                {% endif %}
-            {% endif %}
+                <div class="btn-row ccp-main-actions" style="margin-top:14px;">
+                    <form id="endPlayPhaseForm" action="/endPlayPhase" method="post" style="margin:0;">
+                        <button type="button" id="openEndPlayPhaseModal" {% if end_play_disabled %}disabled{% endif %}>Spielphase beenden</button>
+                    </form>
 
-            {% if start_file_exists and all_confirmed %}
-                <div style="margin-top: 14px;">
-                    {% if not pairings_started %}
-                        <form action="/startPairings" method="post" class="row" style="gap:10px; margin:0;">
-                            <label for="numPods">Anzahl Pods / Tische:</label>
-                            <input type="number" id="numPods" name="num_pods" min="1" step="1" value="{{ default_num_pods }}">
-                            <label for="hosts">Hosts (Startplätze):</label>
-                            <div id="hostsMultiselect" class="multiselect" data-placeholder="Hosts auswählen">
-                                <button type="button" id="hostsToggle" class="multiselect-toggle" aria-haspopup="listbox" aria-expanded="false" aria-controls="hostsDropdown">
-                                    Hosts auswählen
-                                </button>
-                                <div id="hostsDropdown" class="multiselect-dropdown" role="listbox" aria-multiselectable="true" hidden>
-                                    {% for p in players %}
-                                        <label class="multiselect-option" role="option" aria-selected="{% if p in selected_hosts %}true{% else %}false{% endif %}">
-                                            <input type="checkbox" value="{{ p }}" {% if p in selected_hosts %}checked{% endif %}>
-                                            <span>{{ p }}</span>
-                                        </label>
-                                    {% endfor %}
-                                </div>
-                                <select id="hosts" name="hosts" multiple hidden aria-hidden="true" tabindex="-1">
-                                    {% for p in players %}
-                                        <option value="{{ p }}" {% if p in selected_hosts %}selected{% endif %}>{{ p }}</option>
-                                    {% endfor %}
-                                </select>
-                            </div>
-                            <div class="status" style="margin:0; font-size: 0.95em;">
-                                Optional: Wähle pro Tisch einen Host aus. Hosts werden in Runde 1 zuerst auf verschiedene Tische gesetzt.
-                            </div>
-
-
-                            <div class="btn-row" style="justify-content: flex-end;">
-                                <button type="submit">Pairings starten</button>
-                            </div>
+                    {% if primary_action.action %}
+                        <form action="{{ primary_action.action }}" method="post" style="margin:0;">
+                            <button type="submit" {% if primary_action.disabled %}disabled{% endif %}>{{ primary_action.label }}</button>
                         </form>
                     {% else %}
-                        <div class="btn-row" style="justify-content: space-between;">
-                            <form id="endPlayPhaseForm" action="/endPlayPhase" method="post" style="margin:0;">
-                                <button type="button" id="openEndPlayPhaseModal">Spielphase beenden</button>
-                            </form>
-
-                            <form action="/nextRound" method="post" style="margin:0;">
-                                <button type="submit" {% if pairings_phase != "playing" or not active_round_all_tables_reported %}disabled{% endif %}>Nächste Runde starten</button>
-                            </form>
-                        </div>
+                        <button type="button" disabled>{{ primary_action.label }}</button>
                     {% endif %}
                 </div>
             {% endif %}
-
-            {% if pairings_phase == "pre_voting" %}
-                <div style="margin-top: 14px;">
-                    <form action="/startVotingPhase" method="post" style="margin:0;">
-                        <button type="submit">Voting starten</button>
-                    </form>
-                </div>
-            {% elif pairings_phase == "voting" and not voting_results_published %}
-                <div style="margin-top: 14px;">
-                    <form action="/publishVotingResults" method="post" style="margin:0;">
-                        <button type="submit" {% if voting_total_count == 0 or voting_done_count != voting_total_count %}disabled{% endif %}>Ergebnisse veröffentlichen</button>
-                    </form>
-                </div>
-            {% endif %}
-
-            {% if pairings_phase == "playing" and active_round > 0 and round_tables %}
-                <div class="status" style="margin-top: 14px;">
-                    <strong>Rundenreport zurücksetzen (Runde {{ active_round }})</strong>
-                    <div style="margin-top: 10px; display: grid; gap: 8px;">
-                        {% for table in round_tables %}
-                            <div class="round-report-row">
-                                <div class="round-report-title-wrap">
-                                    <div>
-                                        Tisch {{ table.table }}
-                                        {% if table.has_report and table.placement_summary %}
-                                            · {{ table.placement_summary }}
-                                        {% else %}
-                                            · kein Ergebnis
-                                        {% endif %}
-                                    </div>
-                                    {% if table.has_report and table.placement_items %}
-                                        <span class="info-wrap round-report-info-wrap">
-                                            <button type="button" class="info-btn" aria-label="Platzierungen anzeigen">i</button>
-                                            <div class="info-tooltip">
-                                                {% for item in table.placement_items %}
-                                                    <div class="tooltip-item">{{ item.place }}. {{ item.player }}</div>
-                                                {% endfor %}
-                                            </div>
-                                        </span>
-                                    {% endif %}
-                                </div>
-                                <form action="/resetRoundReport" method="post" style="margin:0;">
-                                    <input type="hidden" name="round_no" value="{{ active_round }}">
-                                    <input type="hidden" name="table_no" value="{{ table.table }}">
-                                    <button type="submit" {% if not table.has_report %}disabled{% endif %}>Meldung zurücksetzen</button>
-                                </form>
-                            </div>
-                        {% endfor %}
-                    </div>
-                </div>
-            {% endif %}
-
-            <div class="btn-row" style="justify-content: space-between;">
-                <!-- Clear wird erst nach Confirm abgeschickt -->
-                <form id="clearForm" action="/clear" method="post" style="margin:0;">
-                    <button type="button" id="openClearModal">Daten löschen</button>
-                </form>
-
-                <form action="/startRaffle" method="post" style="margin:0;">
-                    <button type="submit" {% if deck_count < min_decks_to_start or start_file_exists %}disabled{% endif %}>
-                        Raffle starten
-                    </button>
-                </form>
-            </div>
         </section>
 
         <section class="ccp-panel" data-panel="settings" hidden>
+            <form id="clearForm" action="/clear" method="post" style="margin:0 0 10px 0;">
+                <button type="button" id="openClearModal">Daten löschen</button>
+            </form>
+
             <div id="settingsAlert" class="status" style="display:none;"></div>
             <div id="settingsMeta" class="status settings-meta">Lade Settings ...</div>
 
@@ -238,6 +238,10 @@
                     <input type="text" id="commander_preview_query_template" data-key="scryfall.commander_preview_query_template">
                 </label>
 
+                <label>Card Preview Query
+                    <input type="text" id="card_preview_query_template" data-key="scryfall.card_preview_query_template">
+                </label>
+
                 <label>Default BG Zoom
                     <input type="number" id="default_bg_zoom" data-key="ui.default_bg_zoom" step="0.01">
                 </label>
@@ -246,11 +250,8 @@
                     <input type="number" id="commander_bg_zoom" data-key="ui.commander_bg_zoom" step="0.01">
                 </label>
 
-
                 <label class="checkbox-row"><input type="checkbox" id="chip_preview_modal_style" data-key="ui.chip_preview_modal_style"> Chip-Card-Preview als Modal anzeigen</label>
-
                 <label class="checkbox-row"><input type="checkbox" id="chip_preview_reveal_animation" data-key="ui.chip_preview_reveal_animation"> Chip-Card-Preview mit Reveal-Animation anzeigen</label>
-
                 <label class="checkbox-row"><input type="checkbox" id="chip_preview_swipe_enabled" data-key="ui.chip_preview_swipe_enabled"> Chip-Card-Preview Swipe aktivieren</label>
 
                 <label>Suggest Min Chars
@@ -281,7 +282,6 @@
 
     </div>
 
-    <!-- Confirm Modal (muss außerhalb der .glass-card liegen wegen backdrop-filter) -->
     <div class="modal-overlay" id="clearModal" aria-hidden="true">
         <div class="modal" role="dialog" aria-modal="true" aria-labelledby="clearModalTitle">
             <h2 id="clearModalTitle">Wirklich löschen?</h2>
@@ -295,7 +295,6 @@
             </div>
         </div>
     </div>
-
 
     <div class="modal-overlay" id="endPlayPhaseModal" aria-hidden="true">
         <div class="modal" role="dialog" aria-modal="true" aria-labelledby="endPlayPhaseModalTitle">
@@ -320,6 +319,5 @@
     </div>
 
     <script src="/static/ccp.js" defer></script>
-
 </body>
 </html>

@@ -740,6 +740,11 @@ body.ccp-page .ccp-card{
   align-items:center;
 }
 
+.ccp-main-actions{
+  justify-content: space-between;
+  align-items: center;
+}
+
 .round-report-title-wrap{
   display:flex;
   align-items:center;
