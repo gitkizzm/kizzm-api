@@ -161,6 +161,13 @@ input::placeholder{
   margin-top: 18px;
 }
 
+#bestDeckVoting.voting-waiting-mode .voting-layout,
+#bestDeckVoting.voting-waiting-mode #votingError,
+#bestDeckVoting.voting-waiting-mode #votingResults,
+#bestDeckVoting.voting-waiting-mode .btn-row{
+  display: none !important;
+}
+
 /* =========================================================
    Buttons
    ========================================================= */

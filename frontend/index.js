@@ -1103,12 +1103,17 @@ async function ensureCardPreviewLoaded(){
     const isPublished = bestDeckVotingState.votingKind === 'results_published';
     const isWaitingResults = bestDeckVotingState.votingKind === 'waiting_results';
     const votingLayoutEl = bestDeckVotingRootEl?.querySelector('.voting-layout');
+    bestDeckVotingRootEl?.classList.toggle('voting-waiting-mode', isWaitingResults);
 
     renderVotingResults(isPublished ? bestDeckVotingState.results : null);
     if(isPublished || isWaitingResults){
       if(isPublished) setVotingHint('');
       votingDecksPoolEl.innerHTML = '';
       votingPlacesEl.innerHTML = '';
+      if(isWaitingResults && votingResultsEl){
+        votingResultsEl.innerHTML = '';
+        votingResultsEl.style.display = 'none';
+      }
       if(votingLayoutEl) votingLayoutEl.style.display = 'none';
       if(votingErrorEl) votingErrorEl.style.display = 'none';
       if(submitBestDeckVoteBtn?.parentElement) submitBestDeckVoteBtn.parentElement.style.display = 'none';
