@@ -11,7 +11,8 @@
     "default_background_query": "t:basic t:snow e:SLD",
     "random_commander_query": "game:paper is:commander -t:background",
     "round_report_avatar_query_template": "game:paper is:normal !\"{name}\"",
-    "commander_preview_query_template": "game:paper is:commander !\"{name}\""
+    "commander_preview_query_template": "game:paper is:commander !\"{name}\"",
+    "card_preview_query_template": "game:paper is:commander !\"{name}\""
   },
   "ui": {
     "default_bg_zoom": 1.12,
