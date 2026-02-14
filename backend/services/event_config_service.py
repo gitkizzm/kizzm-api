@@ -52,8 +52,8 @@ class ScryfallSettings(BaseModel):
 class UISettings(BaseModel):
     default_bg_zoom: float = DEFAULT_BG_ZOOM
     commander_bg_zoom: float = COMMANDER_BG_ZOOM
-    chip_preview_modal_style: bool = True
-    chip_preview_reveal_animation: bool = True
+    chip_preview_modal_style: bool = False
+    chip_preview_reveal_animation: bool = False
 
 
 class APISettings(BaseModel):

@@ -55,8 +55,8 @@ async function ensureCardPreviewLoaded(){
   let reportState = null;
   let bestDeckVotingState = null;
   let chipPreviewUi = {
-    modalStyle: true,
-    revealAnimation: true,
+    modalStyle: false,
+    revealAnimation: false,
   };
 
   const chipPreviewOverlayEl = document.getElementById('chipPreviewOverlay');
@@ -415,6 +415,8 @@ async function ensureCardPreviewLoaded(){
   }
 
   function closeChipPreview(){
+    const previewEl = document.getElementById('cardPreview');
+    previewEl?.classList.remove('is-chip-preview-expanded');
     chipPreviewOverlayEl && (chipPreviewOverlayEl.style.display = 'none');
     if(chipPreviewModalEl){
       chipPreviewModalEl.classList.remove('show');
@@ -429,6 +431,7 @@ async function ensureCardPreviewLoaded(){
 
     const previewEl = document.getElementById('cardPreview');
     if(!previewEl) return;
+    previewEl.classList.add('is-chip-preview-expanded');
 
     if(chipPreviewUi.modalStyle){
       if(chipPreviewModalCardHostEl && previewEl.parentElement !== chipPreviewModalCardHostEl){

@@ -1015,6 +1015,17 @@ body.ccp-page .ccp-card{
   width: fit-content;
 }
 
+
+.card-preview.is-chip-preview-expanded .card3d{
+  width: min(70vw, calc(70vh * 5 / 7));
+  max-height: 70vh;
+}
+
+.card-preview.is-chip-preview-expanded.is-pair .card3d{
+  width: min(34vw, calc(70vh * 5 / 7));
+  max-height: 70vh;
+}
+
 .chip-preview-close{
   position: absolute;
   right: 16px;
@@ -1044,16 +1055,6 @@ body.ccp-page .ccp-card{
 
 #chipPreviewModalCardHost .card-preview{
   margin: 0;
-}
-
-#chipPreviewModalCardHost .card3d{
-  width: min(40vw, calc((80vh - 190px) * 5 / 7));
-  max-height: calc(80vh - 190px);
-}
-
-#chipPreviewModalCardHost .card-preview.is-pair .card3d{
-  width: min(24vw, calc((80vh - 210px) * 5 / 7));
-  max-height: calc(80vh - 210px);
 }
 
 .chip-preview-names{
