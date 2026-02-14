@@ -17,16 +17,12 @@
 
         <section class="ccp-panel is-active" data-panel="controls">
             <div class="status">
-                <strong>Aktuelle Phase</strong>
-                <div style="margin-top:6px;">{{ phase_name }}</div>
+                {{ phase_name }}
             </div>
 
             <div class="status" style="margin-top: 12px;">
-                <strong>Phasenstatus / Details</strong>
-                <div style="margin-top:6px;">{{ phase_status_text }}</div>
-
                 {% if voting_results_published and voting_results_rows %}
-                    <div style="overflow:auto; margin-top:10px;">
+                    <div style="overflow:auto;">
                         <table style="width:100%; border-collapse: collapse; font-size: 0.95em;">
                             <thead>
                                 <tr>
@@ -56,7 +52,7 @@
                     </div>
                 {% else %}
                     {% if deck_count > 0 %}
-                        <div class="status status-inline" style="margin-top:10px;">
+                        <div class="status-inline" {% if start_file_exists and confirmed_count == deck_count and pairings_phase not in ['playing', 'pre_voting', 'voting'] %}style="color: var(--success); font-weight:700;"{% endif %}>
                             {% if start_file_exists and pairings_phase == "voting" %}
                                 {% if voting_total_count > 0 and voting_done_count == voting_total_count %}
                                     Alle Teilnehmer haben gevotet.
@@ -65,6 +61,8 @@
                                 {% endif %}
                             {% elif start_file_exists and pairings_phase == "pre_voting" %}
                                 Vorabauswertung verfügbar. Voting kann manuell gestartet werden.
+                            {% elif start_file_exists and confirmed_count == deck_count and pairings_phase not in ['playing', 'pre_voting', 'voting'] %}
+                                Alle Decks bestätigt, Pairings können gestartet werden.
                             {% elif start_file_exists %}
                                 {{ confirmed_count }} von {{ deck_count }} der Decks wurden ausgeteilt.
                             {% else %}
@@ -88,45 +86,42 @@
                             </span>
                         </div>
                     {% elif deck_count == 0 %}
-                        <div class="status danger" style="margin-top:10px;">Es sind noch keine Decks eingetragen.</div>
+                        <div style="color: var(--danger); font-weight:700;">Es sind noch keine Decks eingetragen.</div>
                     {% else %}
-                        <div class="status danger" style="margin-top:10px;">Die Datei raffle.json existiert nicht.</div>
+                        <div style="color: var(--danger); font-weight:700;">Die Datei raffle.json existiert nicht.</div>
                     {% endif %}
 
                     {% if pairings_phase == "playing" and active_round > 0 and round_tables %}
-                        <div style="margin-top: 12px;">
-                            <strong>Rundenreport zurücksetzen (Runde {{ active_round }})</strong>
-                            <div style="margin-top: 10px; display: grid; gap: 8px;">
-                                {% for table in round_tables %}
-                                    <div class="round-report-row">
-                                        <div class="round-report-title-wrap">
-                                            <div>
-                                                Tisch {{ table.table }}
-                                                {% if table.has_report and table.placement_summary %}
-                                                    · {{ table.placement_summary }}
-                                                {% else %}
-                                                    · kein Ergebnis
-                                                {% endif %}
-                                            </div>
-                                            {% if table.has_report and table.placement_items %}
-                                                <span class="info-wrap round-report-info-wrap">
-                                                    <button type="button" class="info-btn" aria-label="Platzierungen anzeigen">i</button>
-                                                    <div class="info-tooltip">
-                                                        {% for item in table.placement_items %}
-                                                            <div class="tooltip-item">{{ item.place }}. {{ item.player }}</div>
-                                                        {% endfor %}
-                                                    </div>
-                                                </span>
+                        <div style="margin-top: 10px; display: grid; gap: 8px;">
+                            {% for table in round_tables %}
+                                <div class="round-report-row">
+                                    <div class="round-report-title-wrap">
+                                        <div>
+                                            Tisch {{ table.table }}
+                                            {% if table.has_report %}
+                                                · <span style="color: var(--success); font-weight:700;">Ergebnis zurückgemeldet</span>
+                                            {% else %}
+                                                · kein Ergebnis
                                             {% endif %}
                                         </div>
-                                        <form action="/resetRoundReport" method="post" style="margin:0;">
-                                            <input type="hidden" name="round_no" value="{{ active_round }}">
-                                            <input type="hidden" name="table_no" value="{{ table.table }}">
-                                            <button type="submit" {% if not table.has_report %}disabled{% endif %}>Meldung zurücksetzen</button>
-                                        </form>
+                                        {% if table.has_report and table.placement_items %}
+                                            <span class="info-wrap round-report-info-wrap">
+                                                <button type="button" class="info-btn" aria-label="Platzierungen anzeigen">i</button>
+                                                <div class="info-tooltip">
+                                                    {% for item in table.placement_items %}
+                                                        <div class="tooltip-item">{{ item.place }}. {{ item.player }}</div>
+                                                    {% endfor %}
+                                                </div>
+                                            </span>
+                                        {% endif %}
                                     </div>
-                                {% endfor %}
-                            </div>
+                                    <form action="/resetRoundReport" method="post" style="margin:0;">
+                                        <input type="hidden" name="round_no" value="{{ active_round }}">
+                                        <input type="hidden" name="table_no" value="{{ table.table }}">
+                                        <button type="submit" {% if not table.has_report %}disabled{% endif %}>Meldung zurücksetzen</button>
+                                    </form>
+                                </div>
+                            {% endfor %}
                         </div>
                     {% endif %}
                 {% endif %}
