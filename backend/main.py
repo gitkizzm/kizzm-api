@@ -2499,7 +2499,8 @@ async def development_results_overview(PDF: bool = False):
             return out.getvalue()
 
         pdf_bytes = _table_pdf_bytes(columns, rows)
-        headers = {"Content-Disposition": "attachment; filename=results.pdf"}
+        timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H-%M")
+        headers = {"Content-Disposition": f"attachment; filename=results_{timestamp}.pdf"}
         return StreamingResponse(io.BytesIO(pdf_bytes), media_type="application/pdf", headers=headers)
 
     lines = [
