@@ -14,7 +14,9 @@
   },
   "ui": {
     "default_bg_zoom": 1.12,
-    "commander_bg_zoom": 1.0
+    "commander_bg_zoom": 1.0,
+    "chip_preview_modal_style": false,
+    "chip_preview_reveal_animation": false
   },
   "api": {
     "suggest_min_chars": 3,

@@ -997,3 +997,72 @@ body.ccp-page .ccp-card{
 .report-player-chip--voting{
   width:100%;
 }
+
+
+.chip-preview-overlay{
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  background: rgba(0,0,0,0.55);
+}
+
+.chip-preview-overlay .card-preview,
+#chipPreviewModalCardHost .card-preview{
+  position: static;
+  transform: none;
+  pointer-events: auto;
+  margin: 24px auto 12px;
+  width: fit-content;
+}
+
+
+.card-preview.is-chip-preview-expanded .card3d{
+  width: min(70vw, calc(70vh * 5 / 7));
+  max-height: 70vh;
+}
+
+.card-preview.is-chip-preview-expanded.is-pair .card3d{
+  width: min(34vw, calc(70vh * 5 / 7));
+  max-height: 70vh;
+}
+
+.chip-preview-close{
+  position: absolute;
+  right: 16px;
+  top: 16px;
+  z-index: 71;
+}
+
+.chip-preview-modal{
+  width: min(760px, 94vw);
+  height: 80vh;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow: hidden;
+}
+
+#chipPreviewModalCardHost{
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 8px 8px 0;
+}
+
+#chipPreviewModalCardHost .card-preview{
+  margin: 0;
+}
+
+.chip-preview-names{
+  text-align: center;
+  margin-top: 10px;
+  font-weight: 700;
+}
+
+.report-player-avatar{
+  cursor: pointer;
+}
