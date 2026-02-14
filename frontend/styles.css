@@ -1050,12 +1050,12 @@ body.ccp-page .ccp-card{
 
 .card-preview.is-chip-preview-expanded.is-chip-preview-partner .card3d.slot2{
   z-index: 1;
-  transform: rotateX(8deg) rotateY(-2deg) translateX(-80%) translateY(90%);
+  transform: rotateX(8deg) rotateY(-2deg) translateX(-80%) translateY(10%);
 }
 
 .card-preview.is-chip-preview-expanded.is-chip-preview-partner.is-swipe-swapped .card3d.slot1{
   z-index: 1;
-  transform: rotateX(8deg) rotateY(-2deg) translateX(80%) translateY(90%);
+  transform: rotateX(8deg) rotateY(-2deg) translateX(-80%) translateY(10%);
 }
 
 .card-preview.is-chip-preview-expanded.is-chip-preview-partner.is-swipe-swapped .card3d.slot2{
