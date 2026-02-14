@@ -475,6 +475,18 @@ async def _scryfall_random_commander(exclude_card_ids: set[str] | None = None, m
     """
     return await random_commander(exclude_card_ids=exclude_card_ids, max_tries=max_tries, query_template=_current_settings().scryfall.random_commander_query)
 
+
+async def _scryfall_random_commander_with_query(
+    query_template: str,
+    exclude_card_ids: set[str] | None = None,
+    max_tries: int = 25,
+) -> dict | None:
+    return await random_commander(
+        exclude_card_ids=exclude_card_ids,
+        max_tries=max_tries,
+        query_template=query_template,
+    )
+
 def _is_background(card: dict) -> bool:
     return is_background(card)
 
@@ -539,6 +551,50 @@ async def _validate_commander_combo(c1: dict, c2: dict | None) -> str | None:
     c2_partner = await _scryfall_is_partner_exact_name(c2.get("name") or "")
     if not (c1_partner and c2_partner):
         return "Diese Kombination ist nicht Commander-legal: Beide Karten müssen kompatible Partner-Commander sein (oder 'Choose a Background' + Background)."
+
+    return None
+
+
+async def _debug_pick_legal_partner_combo(exclude_card_ids: set[str]) -> tuple[dict, dict] | None:
+    partner_creature_query = "game:paper is:commander t:creature is:partner -t:background"
+
+    for _ in range(16):
+        commander1 = await _scryfall_random_commander_with_query(
+            query_template=partner_creature_query,
+            exclude_card_ids=exclude_card_ids,
+            max_tries=35,
+        )
+        if not commander1:
+            continue
+
+        commander1_id = str(commander1.get("id") or "").strip()
+        commander1_name = str(commander1.get("name") or "").strip()
+        if not commander1_id or not commander1_name:
+            continue
+
+        if not await _scryfall_is_partner_exact_name(commander1_name):
+            continue
+
+        local_exclude = set(exclude_card_ids)
+        local_exclude.add(commander1_id)
+
+        for _ in range(40):
+            commander2 = await _scryfall_random_commander_with_query(
+                query_template=partner_creature_query,
+                exclude_card_ids=local_exclude,
+                max_tries=35,
+            )
+            if not commander2:
+                continue
+
+            commander2_id = str(commander2.get("id") or "").strip()
+            commander2_name = str(commander2.get("name") or "").strip()
+            if not commander2_id or not commander2_name:
+                continue
+
+            combo_err = await _validate_commander_combo(commander1, commander2)
+            if combo_err is None:
+                return commander1, commander2
 
     return None
 
@@ -1207,27 +1263,53 @@ async def _debug_apply_step() -> dict:
             selected_names = names[:8]
             deck_ids = list(range(1, 9))
 
+            partner_deck_ids = list(deck_ids)
+            shuffle(partner_deck_ids)
+            partner_deck_ids = set(partner_deck_ids[: len(deck_ids) // 2])
+
             created_entries: list[dict] = []
             seen_card_ids: set[str] = set()
 
             for deck_id, deckersteller in zip(deck_ids, selected_names):
-                card = await _scryfall_random_commander(exclude_card_ids=seen_card_ids)
-                if not card:
-                    raise HTTPException(status_code=502, detail="Konnte keinen zufälligen Commander von Scryfall laden.")
+                commander_name = None
+                commander_id = None
+                commander2_name = None
+                commander2_id = None
 
-                commander_name = (card.get("name") or "").strip()
-                commander_id = (card.get("id") or "").strip()
-                if not commander_name or not commander_id:
-                    raise HTTPException(status_code=502, detail="Ungültige Scryfall-Antwort (name/id fehlt).")
+                if deck_id in partner_deck_ids:
+                    combo = await _debug_pick_legal_partner_combo(seen_card_ids)
+                    if not combo:
+                        raise HTTPException(status_code=502, detail="Konnte keine gültige Partner-Kombo von Scryfall laden.")
 
-                seen_card_ids.add(commander_id)
+                    card1, card2 = combo
+                    commander_name = (card1.get("name") or "").strip()
+                    commander_id = (card1.get("id") or "").strip()
+                    commander2_name = (card2.get("name") or "").strip()
+                    commander2_id = (card2.get("id") or "").strip()
+
+                    if not commander_name or not commander_id or not commander2_name or not commander2_id:
+                        raise HTTPException(status_code=502, detail="Ungültige Scryfall-Antwort für Partner-Kombo (name/id fehlt).")
+
+                    seen_card_ids.add(commander_id)
+                    seen_card_ids.add(commander2_id)
+                else:
+                    card = await _scryfall_random_commander(exclude_card_ids=seen_card_ids)
+                    if not card:
+                        raise HTTPException(status_code=502, detail="Konnte keinen zufälligen Commander von Scryfall laden.")
+
+                    commander_name = (card.get("name") or "").strip()
+                    commander_id = (card.get("id") or "").strip()
+                    if not commander_name or not commander_id:
+                        raise HTTPException(status_code=502, detail="Ungültige Scryfall-Antwort (name/id fehlt).")
+
+                    seen_card_ids.add(commander_id)
 
                 created_entries.append({
                     "deckersteller": deckersteller,
                     "commander": commander_name,
                     "commander_id": commander_id,
-                    "commander2": None,
-                    "commander2_id": None,
+                    "commander2": commander2_name,
+                    "commander2_id": commander2_id,
                     "deckUrl": None,
                     "deck_id": deck_id,
                     "deckOwner": None,
