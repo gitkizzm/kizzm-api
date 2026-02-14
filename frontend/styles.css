@@ -1019,11 +1019,47 @@ body.ccp-page .ccp-card{
 .card-preview.is-chip-preview-expanded .card3d{
   width: min(70vw, calc(70vh * 5 / 7));
   max-height: 70vh;
+  animation: none !important;
 }
 
 .card-preview.is-chip-preview-expanded.is-pair .card3d{
-  width: min(34vw, calc(70vh * 5 / 7));
+  width: min(36vw, calc(70vh * 5 / 7));
   max-height: 70vh;
+}
+
+.card-preview.is-chip-preview-expanded.is-chip-preview-partner{
+  gap: 0;
+}
+
+.card-preview.is-chip-preview-expanded.is-chip-preview-partner .card3d.slot1,
+.card-preview.is-chip-preview-expanded.is-chip-preview-partner .card3d.slot2{
+  transition: transform 220ms ease, margin 220ms ease, z-index 220ms linear;
+}
+
+.card-preview.is-chip-preview-expanded.is-chip-preview-partner .card3d.slot1{
+  z-index: 2;
+  margin-right: -10%;
+  transform: rotateX(8deg) rotateY(-7deg) translateX(0);
+}
+
+.card-preview.is-chip-preview-expanded.is-chip-preview-partner .card3d.slot2{
+  z-index: 1;
+  margin-left: 0;
+  transform: rotateX(8deg) rotateY(-2deg) translateX(2%);
+}
+
+.card-preview.is-chip-preview-expanded.is-chip-preview-partner.is-swipe-swapped .card3d.slot1{
+  z-index: 1;
+  margin-right: 0;
+  margin-left: -10%;
+  transform: rotateX(8deg) rotateY(-2deg) translateX(-2%);
+}
+
+.card-preview.is-chip-preview-expanded.is-chip-preview-partner.is-swipe-swapped .card3d.slot2{
+  z-index: 2;
+  margin-left: 0;
+  margin-right: -10%;
+  transform: rotateX(8deg) rotateY(-7deg) translateX(0);
 }
 
 .chip-preview-close{

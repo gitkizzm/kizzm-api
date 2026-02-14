@@ -65,6 +65,8 @@ async function ensureCardPreviewLoaded(){
   const chipPreviewModalCloseEl = document.getElementById('chipPreviewModalClose');
   const chipPreviewModalCardHostEl = document.getElementById('chipPreviewModalCardHost');
   const chipPreviewNamesEl = document.getElementById('chipPreviewNames');
+  let chipPreviewFrontSlot = 1;
+  let chipPreviewTouchStartX = null;
 
   const commander1Input = document.getElementById("commander");
   const commander1Box = document.getElementById("commanderSuggestBox");
@@ -410,13 +412,87 @@ async function ensureCardPreviewLoaded(){
     if(!chipPreviewNamesEl) return;
     const c1 = String(commander1 || '').trim();
     const c2 = String(commander2 || '').trim();
-    const names = [c1, c2].filter(Boolean);
+    const names = chipPreviewFrontSlot === 2 ? [c2, c1].filter(Boolean) : [c1, c2].filter(Boolean);
     chipPreviewNamesEl.textContent = names.join(' / ');
+  }
+
+  function setChipPreviewFrontSlot(slot){
+    const previewEl = document.getElementById('cardPreview');
+    chipPreviewFrontSlot = slot === 2 ? 2 : 1;
+    previewEl?.classList.toggle('is-swipe-swapped', chipPreviewFrontSlot === 2);
+  }
+
+  async function animateChipPreviewFromAvatar(previewEl, avatarEl){
+    if(!previewEl || !avatarEl) return;
+    const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if(reduce) return;
+
+    const startRect = avatarEl.getBoundingClientRect();
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    const endRect = previewEl.getBoundingClientRect();
+    if(endRect.width <= 0 || endRect.height <= 0) return;
+
+    const startCx = startRect.left + (startRect.width / 2);
+    const startCy = startRect.top + (startRect.height / 2);
+    const endCx = endRect.left + (endRect.width / 2);
+    const endCy = endRect.top + (endRect.height / 2);
+
+    const dx = startCx - endCx;
+    const dy = startCy - endCy;
+    const startScale = Math.max(0.06, Math.min(0.18, startRect.width / Math.max(endRect.width, 1)));
+
+    previewEl.animate(
+      [
+        { transform: `translate(${dx}px, ${dy}px) scale(${startScale})`, opacity: 0.25 },
+        { transform: 'translate(0px, 0px) scale(1)', opacity: 1 },
+      ],
+      {
+        duration: 600,
+        easing: 'cubic-bezier(0.2, 0.9, 0.2, 1)',
+        fill: 'both',
+      }
+    );
+  }
+
+  function bindChipPreviewSwipe(commander1, commander2){
+    const previewEl = document.getElementById('cardPreview');
+    if(!previewEl) return;
+
+    const hasPartner = !!String(commander2 || '').trim();
+    previewEl.classList.toggle('is-chip-preview-partner', hasPartner);
+    if(!hasPartner) return;
+
+    previewEl.onpointerdown = (ev) => {
+      chipPreviewTouchStartX = ev.clientX;
+    };
+
+    previewEl.onpointerup = (ev) => {
+      if(chipPreviewTouchStartX === null) return;
+      const deltaX = ev.clientX - chipPreviewTouchStartX;
+      chipPreviewTouchStartX = null;
+      if(Math.abs(deltaX) < 40) return;
+
+      if(deltaX > 0){
+        setChipPreviewFrontSlot(2);
+      }else{
+        setChipPreviewFrontSlot(1);
+      }
+      setChipPreviewNames(commander1, commander2);
+    };
   }
 
   function closeChipPreview(){
     const previewEl = document.getElementById('cardPreview');
     previewEl?.classList.remove('is-chip-preview-expanded');
+    previewEl?.classList.remove('is-chip-preview-partner');
+    previewEl?.classList.remove('is-swipe-swapped');
+    if(previewEl){
+      previewEl.onpointerdown = null;
+      previewEl.onpointerup = null;
+      previewEl.onpointercancel = null;
+    }
+    chipPreviewTouchStartX = null;
+    chipPreviewFrontSlot = 1;
     chipPreviewOverlayEl && (chipPreviewOverlayEl.style.display = 'none');
     if(chipPreviewModalEl){
       chipPreviewModalEl.classList.remove('show');
@@ -424,13 +500,14 @@ async function ensureCardPreviewLoaded(){
     }
   }
 
-  async function showChipPreview(commander1, commander2){
+  async function showChipPreview(commander1, commander2, avatarEl){
     const c1 = String(commander1 || '').trim();
     const c2 = String(commander2 || '').trim();
     if(!c1) return;
 
     const previewEl = document.getElementById('cardPreview');
     if(!previewEl) return;
+    setChipPreviewFrontSlot(1);
     previewEl.classList.add('is-chip-preview-expanded');
 
     if(chipPreviewUi.modalStyle){
@@ -453,7 +530,9 @@ async function ensureCardPreviewLoaded(){
       if(chipPreviewOverlayEl) chipPreviewOverlayEl.style.display = 'block';
     }
 
+    bindChipPreviewSwipe(c1, c2);
     setChipPreviewNames(c1, c2);
+    await animateChipPreviewFromAvatar(previewEl, avatarEl);
 
     await ensureCardPreviewLoaded();
     cardPreview.initCardPreview();
@@ -480,7 +559,7 @@ async function ensureCardPreviewLoaded(){
         const commander1 = String(chip.dataset?.commander || '').trim();
         const commander2 = String(chip.dataset?.commander2 || '').trim();
         if(!commander1) return;
-        showChipPreview(commander1, commander2).catch(() => {});
+        showChipPreview(commander1, commander2, avatarEl).catch(() => {});
       });
     });
 

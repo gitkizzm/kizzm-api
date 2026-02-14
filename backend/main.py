@@ -1845,12 +1845,13 @@ async def background_default():
 @app.get("/api/background/commander")
 async def background_commander(name: str = ""):
     name = (name or "").strip()
+    settings = _current_settings()
     if not name:
-        return JSONResponse({"url": None, "zoom": _current_settings().ui.commander_bg_zoom})
+        return JSONResponse({"url": None, "zoom": settings.ui.commander_bg_zoom})
 
-    # exakt (mit Escape für Quotes)
     safe = name.replace('"', '\\"')
-    q = f'game:paper is:commander !"{safe}"'
+    q_template = settings.scryfall.commander_preview_query_template or 'game:paper is:commander !"{name}"'
+    q = q_template.replace('{name}', safe)
 
     url = (
         f"{SCRYFALL_BASE}/cards/search?"
@@ -1861,21 +1862,21 @@ async def background_commander(name: str = ""):
         async with httpx.AsyncClient(timeout=SCRYFALL_TIMEOUT, headers=SCRYFALL_HEADERS) as client:
             r = await client.get(url)
             if r.status_code != 200:
-                return JSONResponse({"url": None, "zoom": _current_settings().ui.commander_bg_zoom})
+                return JSONResponse({"url": None, "zoom": settings.ui.commander_bg_zoom})
 
             data = (r.json().get("data") or [])
             if not data:
-                return JSONResponse({"url": None, "zoom": _current_settings().ui.commander_bg_zoom})
+                return JSONResponse({"url": None, "zoom": settings.ui.commander_bg_zoom})
 
             newest = data[0]
             img = _get_image_url(newest, "border_crop")
             # Fallback, falls border_crop fehlt
             if not img:
                 img = _get_image_url(newest, "large")
-            return JSONResponse({"url": img, "zoom": _current_settings().ui.commander_bg_zoom})
+            return JSONResponse({"url": img, "zoom": settings.ui.commander_bg_zoom})
 
     except Exception:
-        return JSONResponse({"url": None, "zoom": _current_settings().ui.commander_bg_zoom})
+        return JSONResponse({"url": None, "zoom": settings.ui.commander_bg_zoom})
 
 
 def _best_deck_votes_bucket(state: dict) -> dict:
