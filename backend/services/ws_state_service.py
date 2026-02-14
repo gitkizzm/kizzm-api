@@ -51,6 +51,7 @@ def global_signature(
     start_file_exists: bool,
     raffle_list: list[dict],
     pairings_loader: Callable[[], dict | None],
+    settings_loader: Callable[[], dict] | None = None,
 ) -> str:
     deck_ids = {e.get("deck_id") for e in raffle_list if "deck_id" in e}
     confirmed = 0
@@ -71,11 +72,20 @@ def global_signature(
         "active_round": pair.get("active_round"),
         "pairings_hosts": pair.get("hosts"),
         "round_reports": pair.get("round_reports") or {},
+        "best_deck_votes": pair.get("best_deck_votes") or {},
+        "deck_creator_guess_votes": pair.get("deck_creator_guess_votes") or {},
+        "votes_results": pair.get("votes_results") or {},
+        "settings": settings_loader() if settings_loader else {},
     }
     return hashlib.sha1(json.dumps(obj, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
 
 
-def deck_signature(deck_id: int, start_file_exists: bool, raffle_list: list[dict]) -> str:
+def deck_signature(
+    deck_id: int,
+    start_file_exists: bool,
+    raffle_list: list[dict],
+    settings_loader: Callable[[], dict] | None = None,
+) -> str:
     entry = None
     for e in raffle_list:
         if e.get("deck_id") == deck_id:
@@ -95,5 +105,6 @@ def deck_signature(deck_id: int, start_file_exists: bool, raffle_list: list[dict
         "pairing_round": entry.get("pairing_round") if entry else None,
         "pairing_table": entry.get("pairing_table") if entry else None,
         "pairing_phase": entry.get("pairing_phase") if entry else None,
+        "settings": settings_loader() if settings_loader else {},
     }
     return hashlib.sha1(json.dumps(obj, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
