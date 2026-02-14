@@ -473,8 +473,8 @@ async function ensureCardPreviewLoaded(){
     }
 
     const applyFromDelta = (deltaX) => {
-      if(deltaX > 0) setChipPreviewFrontSlot(2);
-      else if(deltaX < 0) setChipPreviewFrontSlot(1);
+      if(deltaX > 0) setChipPreviewFrontSlot(1);
+      else if(deltaX < 0) setChipPreviewFrontSlot(2);
       setChipPreviewNames(commander1, commander2);
     };
 
