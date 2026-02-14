@@ -47,11 +47,14 @@ class ScryfallSettings(BaseModel):
     default_background_query: str = DEFAULT_BG_QUERY
     random_commander_query: str = "game:paper is:commander -t:background"
     round_report_avatar_query_template: str = 'game:paper is:normal !"{name}"'
+    commander_preview_query_template: str = 'game:paper is:commander !"{name}"'
 
 
 class UISettings(BaseModel):
     default_bg_zoom: float = DEFAULT_BG_ZOOM
     commander_bg_zoom: float = COMMANDER_BG_ZOOM
+    chip_preview_modal_style: bool = False
+    chip_preview_reveal_animation: bool = False
 
 
 class APISettings(BaseModel):
@@ -107,8 +110,11 @@ SETTING_LOCKS: dict[str, SettingsLockLevel] = {
     "scryfall.default_background_query": SettingsLockLevel.ALWAYS,
     "scryfall.random_commander_query": SettingsLockLevel.UNTIL_PAIRINGS_START,
     "scryfall.round_report_avatar_query_template": SettingsLockLevel.UNTIL_PAIRINGS_START,
+    "scryfall.commander_preview_query_template": SettingsLockLevel.UNTIL_PAIRINGS_START,
     "ui.default_bg_zoom": SettingsLockLevel.ALWAYS,
     "ui.commander_bg_zoom": SettingsLockLevel.ALWAYS,
+    "ui.chip_preview_modal_style": SettingsLockLevel.ALWAYS,
+    "ui.chip_preview_reveal_animation": SettingsLockLevel.ALWAYS,
     "api.suggest_min_chars": SettingsLockLevel.ALWAYS,
     "api.suggest_limit": SettingsLockLevel.ALWAYS,
     "voting.scheme_type": SettingsLockLevel.UNTIL_VOTING_START,
