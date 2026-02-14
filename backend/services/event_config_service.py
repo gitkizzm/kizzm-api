@@ -55,6 +55,7 @@ class UISettings(BaseModel):
     commander_bg_zoom: float = COMMANDER_BG_ZOOM
     chip_preview_modal_style: bool = False
     chip_preview_reveal_animation: bool = False
+    chip_preview_swipe_enabled: bool = True
 
 
 class APISettings(BaseModel):
@@ -115,6 +116,7 @@ SETTING_LOCKS: dict[str, SettingsLockLevel] = {
     "ui.commander_bg_zoom": SettingsLockLevel.ALWAYS,
     "ui.chip_preview_modal_style": SettingsLockLevel.ALWAYS,
     "ui.chip_preview_reveal_animation": SettingsLockLevel.ALWAYS,
+    "ui.chip_preview_swipe_enabled": SettingsLockLevel.ALWAYS,
     "api.suggest_min_chars": SettingsLockLevel.ALWAYS,
     "api.suggest_limit": SettingsLockLevel.ALWAYS,
     "voting.scheme_type": SettingsLockLevel.UNTIL_VOTING_START,

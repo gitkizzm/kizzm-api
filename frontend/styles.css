@@ -1004,6 +1004,9 @@ body.ccp-page .ccp-card{
   inset: 0;
   z-index: 70;
   background: rgba(0,0,0,0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .chip-preview-overlay .card-preview,
@@ -1011,7 +1014,7 @@ body.ccp-page .ccp-card{
   position: static;
   transform: none;
   pointer-events: auto;
-  margin: 24px auto 12px;
+  margin: 0;
   width: fit-content;
 }
 
@@ -1031,35 +1034,33 @@ body.ccp-page .ccp-card{
   gap: 0;
 }
 
+.card-preview.is-chip-preview-expanded.is-chip-preview-partner .card3d{
+  pointer-events: auto;
+}
+
 .card-preview.is-chip-preview-expanded.is-chip-preview-partner .card3d.slot1,
 .card-preview.is-chip-preview-expanded.is-chip-preview-partner .card3d.slot2{
-  transition: transform 220ms ease, margin 220ms ease, z-index 220ms linear;
+  transition: transform 220ms ease, z-index 220ms linear;
 }
 
 .card-preview.is-chip-preview-expanded.is-chip-preview-partner .card3d.slot1{
   z-index: 2;
-  margin-right: -10%;
-  transform: rotateX(8deg) rotateY(-7deg) translateX(0);
+  transform: rotateX(8deg) rotateY(-7deg) translateX(0) translateY(0);
 }
 
 .card-preview.is-chip-preview-expanded.is-chip-preview-partner .card3d.slot2{
   z-index: 1;
-  margin-left: 0;
-  transform: rotateX(8deg) rotateY(-2deg) translateX(2%);
+  transform: rotateX(8deg) rotateY(-2deg) translateX(-80%) translateY(90%);
 }
 
 .card-preview.is-chip-preview-expanded.is-chip-preview-partner.is-swipe-swapped .card3d.slot1{
   z-index: 1;
-  margin-right: 0;
-  margin-left: -10%;
-  transform: rotateX(8deg) rotateY(-2deg) translateX(-2%);
+  transform: rotateX(8deg) rotateY(-2deg) translateX(80%) translateY(90%);
 }
 
 .card-preview.is-chip-preview-expanded.is-chip-preview-partner.is-swipe-swapped .card3d.slot2{
   z-index: 2;
-  margin-left: 0;
-  margin-right: -10%;
-  transform: rotateX(8deg) rotateY(-7deg) translateX(0);
+  transform: rotateX(8deg) rotateY(-7deg) translateX(0) translateY(0);
 }
 
 .chip-preview-close{

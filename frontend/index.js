@@ -57,6 +57,7 @@ async function ensureCardPreviewLoaded(){
   let chipPreviewUi = {
     modalStyle: false,
     revealAnimation: false,
+    swipeEnabled: true,
   };
 
   const chipPreviewOverlayEl = document.getElementById('chipPreviewOverlay');
@@ -403,6 +404,7 @@ async function ensureCardPreviewLoaded(){
       if(!r.ok) return;
       chipPreviewUi.modalStyle = !!data?.settings?.ui?.chip_preview_modal_style;
       chipPreviewUi.revealAnimation = !!data?.settings?.ui?.chip_preview_reveal_animation;
+      chipPreviewUi.swipeEnabled = data?.settings?.ui?.chip_preview_swipe_enabled !== false;
     }catch(_){
       // defaults bleiben aktiv
     }
@@ -460,10 +462,23 @@ async function ensureCardPreviewLoaded(){
 
     const hasPartner = !!String(commander2 || '').trim();
     previewEl.classList.toggle('is-chip-preview-partner', hasPartner);
-    if(!hasPartner) return;
+    previewEl.classList.toggle('is-chip-preview-swipe-enabled', hasPartner && chipPreviewUi.swipeEnabled);
+
+    if(!hasPartner){
+      return;
+    }
+
+    const applyFromDelta = (deltaX) => {
+      if(deltaX > 0) setChipPreviewFrontSlot(2);
+      else if(deltaX < 0) setChipPreviewFrontSlot(1);
+      setChipPreviewNames(commander1, commander2);
+    };
 
     previewEl.onpointerdown = (ev) => {
       chipPreviewTouchStartX = ev.clientX;
+      if(typeof previewEl.setPointerCapture === 'function'){
+        try{ previewEl.setPointerCapture(ev.pointerId); }catch(_){ }
+      }
     };
 
     previewEl.onpointerup = (ev) => {
@@ -471,12 +486,33 @@ async function ensureCardPreviewLoaded(){
       const deltaX = ev.clientX - chipPreviewTouchStartX;
       chipPreviewTouchStartX = null;
       if(Math.abs(deltaX) < 40) return;
-
-      if(deltaX > 0){
-        setChipPreviewFrontSlot(2);
-      }else{
-        setChipPreviewFrontSlot(1);
+      if(chipPreviewUi.swipeEnabled){
+        applyFromDelta(deltaX);
       }
+    };
+
+    previewEl.ontouchstart = (ev) => {
+      chipPreviewTouchStartX = ev.touches?.[0]?.clientX ?? null;
+    };
+
+    previewEl.ontouchend = (ev) => {
+      if(chipPreviewTouchStartX === null) return;
+      const endX = ev.changedTouches?.[0]?.clientX;
+      if(typeof endX !== 'number') return;
+      const deltaX = endX - chipPreviewTouchStartX;
+      chipPreviewTouchStartX = null;
+      if(Math.abs(deltaX) < 40) return;
+      if(chipPreviewUi.swipeEnabled){
+        applyFromDelta(deltaX);
+      }
+    };
+
+    previewEl.onclick = (ev) => {
+      if(chipPreviewUi.swipeEnabled) return;
+      const cardEl = ev.target instanceof Element ? ev.target.closest('.card3d[data-slot]') : null;
+      const slot = Number(cardEl?.dataset?.slot || '0');
+      if(slot <= 0 || slot === chipPreviewFrontSlot) return;
+      setChipPreviewFrontSlot(slot);
       setChipPreviewNames(commander1, commander2);
     };
   }
@@ -486,10 +522,14 @@ async function ensureCardPreviewLoaded(){
     previewEl?.classList.remove('is-chip-preview-expanded');
     previewEl?.classList.remove('is-chip-preview-partner');
     previewEl?.classList.remove('is-swipe-swapped');
+    previewEl?.classList.remove('is-chip-preview-swipe-enabled');
     if(previewEl){
       previewEl.onpointerdown = null;
       previewEl.onpointerup = null;
       previewEl.onpointercancel = null;
+      previewEl.ontouchstart = null;
+      previewEl.ontouchend = null;
+      previewEl.onclick = null;
     }
     chipPreviewTouchStartX = null;
     chipPreviewFrontSlot = 1;
