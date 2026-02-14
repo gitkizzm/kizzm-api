@@ -258,10 +258,20 @@ def _sync_round_completion_marker(state: dict, round_no: int) -> dict:
     return completion[round_key]
 
 def _global_signature(start_file_exists: bool, raffle_list: list[dict]) -> str:
-    return global_signature(start_file_exists, raffle_list, pairings_loader=_load_pairings)
+    return global_signature(
+        start_file_exists,
+        raffle_list,
+        pairings_loader=_load_pairings,
+        settings_loader=lambda: settings_as_dict(_current_settings()),
+    )
 
 def _deck_signature(deck_id: int, start_file_exists: bool, raffle_list: list[dict]) -> str:
-    return deck_signature(deck_id, start_file_exists, raffle_list)
+    return deck_signature(
+        deck_id,
+        start_file_exists,
+        raffle_list,
+        settings_loader=lambda: settings_as_dict(_current_settings()),
+    )
 
 
 def _current_settings():
@@ -289,6 +299,9 @@ async def notify_state_change():
     gsig = _global_signature(start_file_exists, raffle_list)
     if _last_global_sig is None:
         _last_global_sig = gsig
+        payload = {"type": "state_changed", "scope": "global", "signature": gsig}
+        await ws_manager.broadcast_group("ccp", payload)
+        await ws_manager.broadcast_group("home", payload)
     elif gsig != _last_global_sig:
         _last_global_sig = gsig
         payload = {"type": "state_changed", "scope": "global", "signature": gsig}
@@ -301,6 +314,8 @@ async def notify_state_change():
         prev = _last_deck_sig.get(did)
         if prev is None:
             _last_deck_sig[did] = dsig
+            payload = {"type": "state_changed", "scope": "deck", "deck_id": did, "signature": dsig}
+            await ws_manager.broadcast_group(f"deck:{did}", payload)
             continue
         if dsig != prev:
             _last_deck_sig[did] = dsig
