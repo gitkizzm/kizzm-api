@@ -42,19 +42,19 @@ Der Entwicklungs-Endpunkt `/results` zeigt pro Deck eine Zeile mit den unten bes
 | `best_deck_votes.{deck_id}.1` | Votender Deck-Owner | Top-3-Voting-Eingabe eines Deck-Owners (Platz 1) | `pairings.json` unter `best_deck_votes` | Deck-ID, die als #1 gewählt wurde. |
 | `best_deck_votes.{deck_id}.2` | Votender Deck-Owner | Top-3-Voting-Eingabe eines Deck-Owners (Platz 2) | `pairings.json` unter `best_deck_votes` | Deck-ID, die als #2 gewählt wurde. |
 | `best_deck_votes.{deck_id}.3` | Votender Deck-Owner | Top-3-Voting-Eingabe eines Deck-Owners (Platz 3) | `pairings.json` unter `best_deck_votes` | Deck-ID, die als #3 gewählt wurde. |
-| `calculated.top3_received_vote_points` | Deck-Ersteller (über dessen Deck) | Berechnet aus allen Top-3-Votes (`#1=3`, `#2=2`, `#3=1`) | Laufzeitberechnung für `/results` (nicht persistiert) | Summe der erhaltenen Punkte eines Decks im Top-3-Voting. |
+| `calculated.top3_received_vote_points` | Deck-Ersteller (über dessen Deck) | Berechnet aus allen Top-3-Votes (konfigurierbar über `event_config.json -> voting.points_scheme.best_deck_voting`) | Laufzeitberechnung für `/results` (nicht persistiert) | Summe der erhaltenen Punkte eines Decks im Top-3-Voting. |
 | `calculated.top3_received_rank` | Deck-Ersteller (über dessen Deck) | Sortierung nach `calculated.top3_received_vote_points` (absteigend, Tie-Break über `deck_id`) | Laufzeitberechnung für `/results` (nicht persistiert) | Platzierung eines Decks im Top-3-Voting. |
-| `calculated.top3_rank_points_used_for_overall` | Deck-Ersteller | Aus `calculated.top3_received_rank` abgeleitet: Rank `1..8` ergibt `8..1` Punkte, ab Rank `9` = `0` | Bereits in `pairings.json -> voting_results.data.rows[].deck_voting_points` nach Publish, sonst Laufzeitberechnung | Die Deck-Voting-Punkte, die in die Gesamtwertung eingehen. |
+| `calculated.top3_rank_points_used_for_overall` | Deck-Ersteller | Aus `calculated.top3_received_rank` über die konfigurierbare Mapping-Tabelle (`event_config.json -> voting.points_scheme.best_deck_overall`) abgeleitet | Bereits in `pairings.json -> voting_results.data.rows[].deck_voting_points` nach Publish, sonst Laufzeitberechnung | Die Deck-Voting-Punkte, die in die Gesamtwertung eingehen. |
 | `deck_creator_guess_votes.{deck_id}` | Votender Deck-Owner | Voting-Eingabe eines Deck-Owners im Deckraten | `pairings.json` unter `deck_creator_guess_votes` | Mapping *Deckersteller → vermutete Deck-ID* für einen Voter. |
-| `calculated.round_phase_points` | Deck-Owner | Summe der Rundenpunkte aus allen erfassten `resolved_places` (`1→4`, `2→3`, `3→2`, `4→1`) | Bereits in `pairings.json -> voting_results.data.rows[].game_points` nach Publish, sonst Laufzeitberechnung | Gesamtpunkte eines Spielers nur aus der Rundenphase. |
-| `calculated.deck_creator_guess_points` | Deck-Owner | +1 pro korrekter Zuordnung im Deckraten | Bereits in `pairings.json -> voting_results.data.rows[].guess_points` nach Publish, sonst Laufzeitberechnung | Erhaltene Punkte eines Spielers im Deckraten. |
+| `calculated.round_phase_points` | Deck-Owner | Summe der Rundenpunkte aus allen erfassten `resolved_places` (konfigurierbar über `event_config.json -> voting.points_scheme.play_phase`) | Bereits in `pairings.json -> voting_results.data.rows[].game_points` nach Publish, sonst Laufzeitberechnung | Gesamtpunkte eines Spielers nur aus der Rundenphase. |
+| `calculated.deck_creator_guess_points` | Deck-Owner | Konfigurierbare Punkte pro korrekter Zuordnung im Deckraten (`event_config.json -> voting.points_scheme.deck_creator_guess.correct_guess`) | Bereits in `pairings.json -> voting_results.data.rows[].guess_points` nach Publish, sonst Laufzeitberechnung | Erhaltene Punkte eines Spielers im Deckraten. |
 | `calculated.overall_event_points` | Deck-Owner (mit creator-basiertem Top3-Anteil) | Summe aus Spielpunkten + Top3-Bonus + Deckratenpunkten | Bereits in `pairings.json -> voting_results.data.rows[].total_points` nach Publish, sonst Laufzeitberechnung | Gesamtpunktzahl eines Spielers im Event. |
 
 ### Hinweise zur Berechnung
 
-- **Spielpunkte**: Werden aus `round_reports.*.*.resolved_places` abgeleitet (Platz 1–4 ⇒ 4/3/2/1 Punkte).
-- **Top-3-Deckpunkte**: Werden deck-bezogen über alle abgegebenen Top-3-Votes summiert.
-- **Deckratenpunkte**: Werden voter-bezogen aus korrekten Treffer-Zuordnungen gezählt.
+- **Spielpunkte**: Werden aus `round_reports.*.*.resolved_places` abgeleitet; die Punktetabelle ist über `voting.points_scheme.play_phase` konfigurierbar.
+- **Top-3-Deckpunkte**: Werden deck-bezogen über alle abgegebenen Top-3-Votes summiert; die Punkte pro Rang sind über `voting.points_scheme.best_deck_voting` konfigurierbar.
+- **Deckratenpunkte**: Werden voter-bezogen aus korrekten Treffer-Zuordnungen gezählt; Punkte pro Treffer sind über `voting.points_scheme.deck_creator_guess.correct_guess` konfigurierbar.
 - **Overall**: `game_points + top3_overall_bonus + guess_points`.
 
 

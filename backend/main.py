@@ -2178,10 +2178,41 @@ def _published_voting_results(state: dict | None) -> dict | None:
     return data if isinstance(data, dict) else None
 
 
+def _configured_point_map(bucket: dict | None, key: str, defaults: dict[int, int]) -> dict[int, int]:
+    section = (bucket or {}).get(key)
+    if not isinstance(section, dict):
+        return dict(defaults)
+
+    out: dict[int, int] = {}
+    for place_raw, points_raw in section.items():
+        try:
+            place = int(place_raw)
+            points = int(points_raw)
+        except (TypeError, ValueError):
+            continue
+        if place <= 0:
+            continue
+        out[place] = points
+
+    return out or dict(defaults)
+
+
+def _configured_correct_guess_points(bucket: dict | None) -> int:
+    section = (bucket or {}).get("deck_creator_guess")
+    if not isinstance(section, dict):
+        return 1
+    try:
+        points = int(section.get("correct_guess", 1))
+    except (TypeError, ValueError):
+        return 1
+    return max(points, 0)
+
+
 def _calculate_play_phase_overview(raffle_list: list[dict], state: dict) -> dict:
     owners = sorted({(e.get("deckOwner") or "").strip() for e in raffle_list if (e.get("deckOwner") or "").strip()})
     gameplay_points = {owner: 0 for owner in owners}
-    place_points = {1: 4, 2: 3, 3: 2, 4: 1}
+    voting_points = (_current_settings().voting.points_scheme or {}) if _current_settings().voting else {}
+    place_points = _configured_point_map(voting_points, "play_phase", {1: 4, 2: 3, 3: 2, 4: 1})
 
     round_reports = (state.get("round_reports") or {}) if isinstance(state, dict) else {}
     for reports_for_round in round_reports.values():
@@ -2226,8 +2257,16 @@ def _calculate_voting_results(raffle_list: list[dict], state: dict) -> dict:
         if built:
             built_by_owner[owner] = built
 
+    voting_points = (_current_settings().voting.points_scheme or {}) if _current_settings().voting else {}
     gameplay_points = {owner: 0 for owner in owners}
-    place_points = {1: 4, 2: 3, 3: 2, 4: 1}
+    place_points = _configured_point_map(voting_points, "play_phase", {1: 4, 2: 3, 3: 2, 4: 1})
+    best_deck_vote_points = _configured_point_map(voting_points, "best_deck_voting", {1: 3, 2: 2, 3: 1})
+    best_deck_overall_points = _configured_point_map(
+        voting_points,
+        "best_deck_overall",
+        {1: 8, 2: 5, 3: 3, 4: 2, 5: 1, 6: 0, 7: 0, 8: 0},
+    )
+    correct_guess_points = _configured_correct_guess_points(voting_points)
     round_reports = (state.get("round_reports") or {}) if isinstance(state, dict) else {}
     for reports_for_round in round_reports.values():
         if not isinstance(reports_for_round, dict):
@@ -2251,20 +2290,18 @@ def _calculate_voting_results(raffle_list: list[dict], state: dict) -> dict:
     for vote in top3_votes.values():
         if not isinstance(vote, dict):
             continue
-        for place, pts in (("1", 3), ("2", 2), ("3", 1)):
+        for place, pts in best_deck_vote_points.items():
             try:
-                deck_id = int(vote.get(place) or 0)
+                deck_id = int(vote.get(str(place)) or 0)
             except (TypeError, ValueError):
                 deck_id = 0
             if deck_id > 0:
                 top3_deck_points[deck_id] = top3_deck_points.get(deck_id, 0) + pts
 
     ranked_decks = sorted(top3_deck_points.items(), key=lambda x: (-x[1], x[0]))
-    # Deck-Voting-Punkte werden aus der Platzierung abgeleitet:
-    # Rank 1..8 => 8..1 Punkte, danach 0 Punkte.
     top3_bonus_by_owner = {owner: 0 for owner in owners}
     for idx, (deck_id, _pts) in enumerate(ranked_decks, start=1):
-        bonus = max(9 - idx, 0)
+        bonus = best_deck_overall_points.get(idx, 0)
         deck_entry = next((e for e in raffle_list if int(e.get("deck_id") or 0) == deck_id), None)
         owner = (deck_entry.get("deckersteller") or "").strip() if deck_entry else ""
         if owner in top3_bonus_by_owner:
@@ -2290,7 +2327,7 @@ def _calculate_voting_results(raffle_list: list[dict], state: dict) -> dict:
             target_entry = next((e for e in raffle_list if (e.get("deckersteller") or "").strip() == str(creator).strip()), None)
             target_deck_id = int((target_entry or {}).get("deck_id") or 0)
             if assigned > 0 and target_deck_id > 0 and assigned == target_deck_id:
-                score += 1
+                score += correct_guess_points
         guess_points_by_owner[voter_owner] += score
 
     rows = []
@@ -2323,13 +2360,15 @@ def _calculate_voting_results(raffle_list: list[dict], state: dict) -> dict:
 
 def _top3_points_and_rank_by_deck(state: dict) -> tuple[dict[int, int], dict[int, int]]:
     top3_votes = (state.get("best_deck_votes") or {}) if isinstance(state, dict) else {}
+    voting_points = (_current_settings().voting.points_scheme or {}) if _current_settings().voting else {}
+    best_deck_vote_points = _configured_point_map(voting_points, "best_deck_voting", {1: 3, 2: 2, 3: 1})
     points_by_deck: dict[int, int] = {}
     for vote in top3_votes.values():
         if not isinstance(vote, dict):
             continue
-        for place, pts in (("1", 3), ("2", 2), ("3", 1)):
+        for place, pts in best_deck_vote_points.items():
             try:
-                deck_id = int(vote.get(place) or 0)
+                deck_id = int(vote.get(str(place)) or 0)
             except (TypeError, ValueError):
                 deck_id = 0
             if deck_id > 0:
