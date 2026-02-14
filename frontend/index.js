@@ -443,15 +443,19 @@ async function ensureCardPreviewLoaded(){
     const dy = startCy - endCy;
     const startScale = Math.max(0.06, Math.min(0.18, startRect.width / Math.max(endRect.width, 1)));
 
+    try{
+      previewEl.getAnimations?.().forEach((anim) => anim.cancel());
+    }catch(_){ }
+
     previewEl.animate(
       [
-        { transform: `translate(${dx}px, ${dy}px) scale(${startScale})`, opacity: 0.25 },
-        { transform: 'translate(0px, 0px) scale(1)', opacity: 1 },
+        { translate: `${dx}px ${dy}px`, scale: `${startScale}`, opacity: 0.25 },
+        { translate: '0px 0px', scale: '1', opacity: 1 },
       ],
       {
         duration: 600,
         easing: 'cubic-bezier(0.2, 0.9, 0.2, 1)',
-        fill: 'both',
+        fill: 'none',
       }
     );
   }
@@ -530,6 +534,7 @@ async function ensureCardPreviewLoaded(){
       previewEl.ontouchstart = null;
       previewEl.ontouchend = null;
       previewEl.onclick = null;
+      try{ previewEl.getAnimations?.().forEach((anim) => anim.cancel()); }catch(_){ }
     }
     chipPreviewTouchStartX = null;
     chipPreviewFrontSlot = 1;
