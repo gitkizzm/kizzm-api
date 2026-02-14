@@ -1023,12 +1023,42 @@ body.ccp-page .ccp-card{
 }
 
 .chip-preview-modal{
-  max-width: 520px;
+  width: min(760px, 94vw);
+  height: 80vh;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  overflow: hidden;
+}
+
+#chipPreviewModalCardHost{
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 8px 8px 0;
+}
+
+#chipPreviewModalCardHost .card-preview{
+  margin: 0;
+}
+
+#chipPreviewModalCardHost .card3d{
+  width: min(40vw, calc((80vh - 190px) * 5 / 7));
+  max-height: calc(80vh - 190px);
+}
+
+#chipPreviewModalCardHost .card-preview.is-pair .card3d{
+  width: min(24vw, calc((80vh - 210px) * 5 / 7));
+  max-height: calc(80vh - 210px);
 }
 
 .chip-preview-names{
   text-align: center;
-  margin-top: 8px;
+  margin-top: 10px;
   font-weight: 700;
 }
 
