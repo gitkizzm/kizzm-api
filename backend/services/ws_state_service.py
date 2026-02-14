@@ -74,7 +74,7 @@ def global_signature(
         "round_reports": pair.get("round_reports") or {},
         "best_deck_votes": pair.get("best_deck_votes") or {},
         "deck_creator_guess_votes": pair.get("deck_creator_guess_votes") or {},
-        "votes_results": pair.get("votes_results") or {},
+        "voting_results": pair.get("voting_results") or {},
         "settings": settings_loader() if settings_loader else {},
     }
     return hashlib.sha1(json.dumps(obj, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
