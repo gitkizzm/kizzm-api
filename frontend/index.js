@@ -54,6 +54,20 @@ async function ensureCardPreviewLoaded(){
 
   let reportState = null;
   let bestDeckVotingState = null;
+  let chipPreviewUi = {
+    modalStyle: false,
+    revealAnimation: false,
+    swipeEnabled: true,
+  };
+
+  const chipPreviewOverlayEl = document.getElementById('chipPreviewOverlay');
+  const chipPreviewOverlayCloseEl = document.getElementById('chipPreviewOverlayClose');
+  const chipPreviewModalEl = document.getElementById('chipPreviewModal');
+  const chipPreviewModalCloseEl = document.getElementById('chipPreviewModalClose');
+  const chipPreviewModalCardHostEl = document.getElementById('chipPreviewModalCardHost');
+  const chipPreviewNamesEl = document.getElementById('chipPreviewNames');
+  let chipPreviewFrontSlot = 1;
+  let chipPreviewTouchStartX = null;
 
   const commander1Input = document.getElementById("commander");
   const commander1Box = document.getElementById("commanderSuggestBox");
@@ -365,6 +379,8 @@ async function ensureCardPreviewLoaded(){
         if(!player) return;
 
         const avatarUrl = playerMeta?.[player]?.avatar_url;
+        chip.dataset.commander = String(playerMeta?.[player]?.commander || '').trim();
+        chip.dataset.commander2 = String(playerMeta?.[player]?.commander2 || '').trim();
         const avatarEl = chip.querySelector('.report-player-avatar');
         const nameEl = chip.querySelector('.report-player-name');
         if(nameEl) nameEl.textContent = reportDisplayName(player);
@@ -379,6 +395,219 @@ async function ensureCardPreviewLoaded(){
     }catch(_){
       // Fallback bleibt bei servergerenderten Initialen.
     }
+  }
+
+  async function loadChipPreviewSettings(){
+    try{
+      const r = await fetch('/api/settings/effective', { cache: 'no-store' });
+      const data = await r.json();
+      if(!r.ok) return;
+      chipPreviewUi.modalStyle = !!data?.settings?.ui?.chip_preview_modal_style;
+      chipPreviewUi.revealAnimation = !!data?.settings?.ui?.chip_preview_reveal_animation;
+      chipPreviewUi.swipeEnabled = data?.settings?.ui?.chip_preview_swipe_enabled !== false;
+    }catch(_){
+      // defaults bleiben aktiv
+    }
+  }
+
+  function setChipPreviewNames(commander1, commander2){
+    if(!chipPreviewNamesEl) return;
+    const c1 = String(commander1 || '').trim();
+    const c2 = String(commander2 || '').trim();
+    const names = chipPreviewFrontSlot === 2 ? [c2, c1].filter(Boolean) : [c1, c2].filter(Boolean);
+    chipPreviewNamesEl.textContent = names.join(' / ');
+  }
+
+  function setChipPreviewFrontSlot(slot){
+    const previewEl = document.getElementById('cardPreview');
+    chipPreviewFrontSlot = slot === 2 ? 2 : 1;
+    previewEl?.classList.toggle('is-swipe-swapped', chipPreviewFrontSlot === 2);
+  }
+
+  async function animateChipPreviewFromAvatar(previewEl, avatarEl){
+    if(!previewEl || !avatarEl) return;
+    const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if(reduce) return;
+
+    const startRect = avatarEl.getBoundingClientRect();
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    const endRect = previewEl.getBoundingClientRect();
+    if(endRect.width <= 0 || endRect.height <= 0) return;
+
+    const startCx = startRect.left + (startRect.width / 2);
+    const startCy = startRect.top + (startRect.height / 2);
+    const endCx = endRect.left + (endRect.width / 2);
+    const endCy = endRect.top + (endRect.height / 2);
+
+    const dx = startCx - endCx;
+    const dy = startCy - endCy;
+    const startScale = Math.max(0.06, Math.min(0.18, startRect.width / Math.max(endRect.width, 1)));
+
+    previewEl.animate(
+      [
+        { transform: `translate(${dx}px, ${dy}px) scale(${startScale})`, opacity: 0.25 },
+        { transform: 'translate(0px, 0px) scale(1)', opacity: 1 },
+      ],
+      {
+        duration: 600,
+        easing: 'cubic-bezier(0.2, 0.9, 0.2, 1)',
+        fill: 'both',
+      }
+    );
+  }
+
+  function bindChipPreviewSwipe(commander1, commander2){
+    const previewEl = document.getElementById('cardPreview');
+    if(!previewEl) return;
+
+    const hasPartner = !!String(commander2 || '').trim();
+    previewEl.classList.toggle('is-chip-preview-partner', hasPartner);
+    previewEl.classList.toggle('is-chip-preview-swipe-enabled', hasPartner && chipPreviewUi.swipeEnabled);
+
+    if(!hasPartner){
+      return;
+    }
+
+    const applyFromDelta = (deltaX) => {
+      if(deltaX > 0) setChipPreviewFrontSlot(2);
+      else if(deltaX < 0) setChipPreviewFrontSlot(1);
+      setChipPreviewNames(commander1, commander2);
+    };
+
+    previewEl.onpointerdown = (ev) => {
+      chipPreviewTouchStartX = ev.clientX;
+      if(typeof previewEl.setPointerCapture === 'function'){
+        try{ previewEl.setPointerCapture(ev.pointerId); }catch(_){ }
+      }
+    };
+
+    previewEl.onpointerup = (ev) => {
+      if(chipPreviewTouchStartX === null) return;
+      const deltaX = ev.clientX - chipPreviewTouchStartX;
+      chipPreviewTouchStartX = null;
+      if(Math.abs(deltaX) < 40) return;
+      if(chipPreviewUi.swipeEnabled){
+        applyFromDelta(deltaX);
+      }
+    };
+
+    previewEl.ontouchstart = (ev) => {
+      chipPreviewTouchStartX = ev.touches?.[0]?.clientX ?? null;
+    };
+
+    previewEl.ontouchend = (ev) => {
+      if(chipPreviewTouchStartX === null) return;
+      const endX = ev.changedTouches?.[0]?.clientX;
+      if(typeof endX !== 'number') return;
+      const deltaX = endX - chipPreviewTouchStartX;
+      chipPreviewTouchStartX = null;
+      if(Math.abs(deltaX) < 40) return;
+      if(chipPreviewUi.swipeEnabled){
+        applyFromDelta(deltaX);
+      }
+    };
+
+    previewEl.onclick = (ev) => {
+      if(chipPreviewUi.swipeEnabled) return;
+      const cardEl = ev.target instanceof Element ? ev.target.closest('.card3d[data-slot]') : null;
+      const slot = Number(cardEl?.dataset?.slot || '0');
+      if(slot <= 0 || slot === chipPreviewFrontSlot) return;
+      setChipPreviewFrontSlot(slot);
+      setChipPreviewNames(commander1, commander2);
+    };
+  }
+
+  function closeChipPreview(){
+    const previewEl = document.getElementById('cardPreview');
+    previewEl?.classList.remove('is-chip-preview-expanded');
+    previewEl?.classList.remove('is-chip-preview-partner');
+    previewEl?.classList.remove('is-swipe-swapped');
+    previewEl?.classList.remove('is-chip-preview-swipe-enabled');
+    if(previewEl){
+      previewEl.onpointerdown = null;
+      previewEl.onpointerup = null;
+      previewEl.onpointercancel = null;
+      previewEl.ontouchstart = null;
+      previewEl.ontouchend = null;
+      previewEl.onclick = null;
+    }
+    chipPreviewTouchStartX = null;
+    chipPreviewFrontSlot = 1;
+    chipPreviewOverlayEl && (chipPreviewOverlayEl.style.display = 'none');
+    if(chipPreviewModalEl){
+      chipPreviewModalEl.classList.remove('show');
+      chipPreviewModalEl.setAttribute('aria-hidden', 'true');
+    }
+  }
+
+  async function showChipPreview(commander1, commander2, avatarEl){
+    const c1 = String(commander1 || '').trim();
+    const c2 = String(commander2 || '').trim();
+    if(!c1) return;
+
+    const previewEl = document.getElementById('cardPreview');
+    if(!previewEl) return;
+    setChipPreviewFrontSlot(1);
+    previewEl.classList.add('is-chip-preview-expanded');
+
+    if(chipPreviewUi.modalStyle){
+      if(chipPreviewModalCardHostEl && previewEl.parentElement !== chipPreviewModalCardHostEl){
+        chipPreviewModalCardHostEl.appendChild(previewEl);
+      }
+      if(chipPreviewOverlayEl) chipPreviewOverlayEl.style.display = 'none';
+      if(chipPreviewModalEl){
+        chipPreviewModalEl.classList.add('show');
+        chipPreviewModalEl.setAttribute('aria-hidden', 'false');
+      }
+    }else{
+      if(chipPreviewOverlayEl && previewEl.parentElement !== chipPreviewOverlayEl){
+        chipPreviewOverlayEl.appendChild(previewEl);
+      }
+      if(chipPreviewModalEl){
+        chipPreviewModalEl.classList.remove('show');
+        chipPreviewModalEl.setAttribute('aria-hidden', 'true');
+      }
+      if(chipPreviewOverlayEl) chipPreviewOverlayEl.style.display = 'block';
+    }
+
+    bindChipPreviewSwipe(c1, c2);
+    setChipPreviewNames(c1, c2);
+    await animateChipPreviewFromAvatar(previewEl, avatarEl);
+
+    await ensureCardPreviewLoaded();
+    cardPreview.initCardPreview();
+    cardPreview.setPartnerSlotEnabled(!!c2);
+
+    if(chipPreviewUi.revealAnimation){
+      await cardPreview.revealCommanders(c1, c2);
+    }else{
+      await cardPreview.setCommander1(c1);
+      if(c2) await cardPreview.setCommander2(c2);
+    }
+  }
+
+  function bindChipPreviewEvents(){
+    const roots = [document.querySelector('.pairing-matchup-grid'), bestDeckVotingRootEl].filter(Boolean);
+    if(roots.length === 0) return;
+
+    roots.forEach((root) => {
+      root.addEventListener('click', (ev) => {
+        const avatarEl = ev.target instanceof Element ? ev.target.closest('.report-player-avatar') : null;
+        if(!avatarEl) return;
+        const chip = avatarEl.closest('.report-player-chip');
+        if(!chip) return;
+        const commander1 = String(chip.dataset?.commander || '').trim();
+        const commander2 = String(chip.dataset?.commander2 || '').trim();
+        if(!commander1) return;
+        showChipPreview(commander1, commander2, avatarEl).catch(() => {});
+      });
+    });
+
+    chipPreviewOverlayCloseEl?.addEventListener('click', closeChipPreview);
+    chipPreviewModalCloseEl?.addEventListener('click', closeChipPreview);
+    chipPreviewModalEl?.addEventListener('click', (ev) => {
+      if(ev.target === chipPreviewModalEl) closeChipPreview();
+    });
   }
 
   function reportCollectPlacements(){
@@ -825,13 +1054,15 @@ async function ensureCardPreviewLoaded(){
     if(!deck) return '';
     const id = Number(deck.deck_id || 0) || 0;
     const commander = String(deck.commander || '').trim();
+    const commander1 = String(deck.commander1 || '').trim();
+    const commander2 = String(deck.commander2 || '').trim();
     const title = commander || `Deck #${id}`;
     const avatarUrl = String(deck.avatar_url || '').trim();
     const avatar = avatarUrl
       ? `<img src="${escapeHtml(avatarUrl)}" alt="" class="report-player-avatar-img">`
       : `<span class="report-player-avatar-fallback">${escapeHtml(String(title).slice(0, 1).toUpperCase())}</span>`;
 
-    return `<div class="report-player-chip report-player-chip--matchup report-player-chip--content-left report-player-chip--voting" draggable="true" data-deck-id="${id}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">
+    return `<div class="report-player-chip report-player-chip--matchup report-player-chip--content-left report-player-chip--voting" draggable="true" data-deck-id="${id}" data-commander="${escapeHtml(commander1 || commander)}" data-commander2="${escapeHtml(commander2)}" title="${escapeHtml(title)}" aria-label="${escapeHtml(title)}">
       <div class="report-player-avatar">${avatar}</div>
       <div class="report-player-name">${escapeHtml(title)}</div>
     </div>`;
@@ -1257,7 +1488,13 @@ async function ensureCardPreviewLoaded(){
 
     initReportModal();
     initBestDeckVoting();
-    hydratePairingMatchupChips();
+    await hydratePairingMatchupChips();
+    await loadChipPreviewSettings();
+    bindChipPreviewEvents();
+
+    document.addEventListener('keydown', (ev) => {
+      if(ev.key === 'Escape') closeChipPreview();
+    });
 
     // start WS
     connectWS();

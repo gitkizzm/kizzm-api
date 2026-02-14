@@ -297,6 +297,7 @@ async def get_form(
         # Prüfen, ob raffle.json existiert und die deck_id enthalten ist
     existing_entry = None
     deckOwner = None
+    pairing_player_meta: dict[str, dict[str, str]] = {}
 
     if FILE_PATH.exists():
         try:
@@ -334,6 +335,17 @@ async def get_form(
             glasscard_title = f"Spielphase – Runde {entry_pairing_round}"
         elif all_confirmed and not pairings_started:
             glasscard_title = "Warten auf Pairings"
+
+    if existing_entry and isinstance(existing_entry.get("pairing_players"), list):
+        players = [str(player).strip() for player in (existing_entry.get("pairing_players") or []) if str(player).strip()]
+        for player in players:
+            owner_entry = next((e for e in raffle_list if (e.get("deckOwner") or "").strip() == player), None)
+            commander_name = (owner_entry or {}).get("commander") or ""
+            commander2_name = (owner_entry or {}).get("commander2") or ""
+            pairing_player_meta[player] = {
+                "commander": str(commander_name).strip(),
+                "commander2": str(commander2_name).strip(),
+            }
 
     # 🔴 NEU: Raffle gestartet, aber Deck ID nicht registriert
     if start_file_exists and deck_id != 0 and existing_entry is None:
@@ -373,6 +385,7 @@ async def get_form(
             "deckOwner": deckOwner,
             "participants": participants,
             "glasscard_title": glasscard_title,
+            "pairing_player_meta": pairing_player_meta,
 
             # NEU: PRG-Fehler + Prefill aus Query-Parametern
             "error": error,
@@ -1832,12 +1845,13 @@ async def background_default():
 @app.get("/api/background/commander")
 async def background_commander(name: str = ""):
     name = (name or "").strip()
+    settings = _current_settings()
     if not name:
-        return JSONResponse({"url": None, "zoom": _current_settings().ui.commander_bg_zoom})
+        return JSONResponse({"url": None, "zoom": settings.ui.commander_bg_zoom})
 
-    # exakt (mit Escape für Quotes)
     safe = name.replace('"', '\\"')
-    q = f'game:paper is:commander !"{safe}"'
+    q_template = settings.scryfall.commander_preview_query_template or 'game:paper is:commander !"{name}"'
+    q = q_template.replace('{name}', safe)
 
     url = (
         f"{SCRYFALL_BASE}/cards/search?"
@@ -1848,21 +1862,21 @@ async def background_commander(name: str = ""):
         async with httpx.AsyncClient(timeout=SCRYFALL_TIMEOUT, headers=SCRYFALL_HEADERS) as client:
             r = await client.get(url)
             if r.status_code != 200:
-                return JSONResponse({"url": None, "zoom": _current_settings().ui.commander_bg_zoom})
+                return JSONResponse({"url": None, "zoom": settings.ui.commander_bg_zoom})
 
             data = (r.json().get("data") or [])
             if not data:
-                return JSONResponse({"url": None, "zoom": _current_settings().ui.commander_bg_zoom})
+                return JSONResponse({"url": None, "zoom": settings.ui.commander_bg_zoom})
 
             newest = data[0]
             img = _get_image_url(newest, "border_crop")
             # Fallback, falls border_crop fehlt
             if not img:
                 img = _get_image_url(newest, "large")
-            return JSONResponse({"url": img, "zoom": _current_settings().ui.commander_bg_zoom})
+            return JSONResponse({"url": img, "zoom": settings.ui.commander_bg_zoom})
 
     except Exception:
-        return JSONResponse({"url": None, "zoom": _current_settings().ui.commander_bg_zoom})
+        return JSONResponse({"url": None, "zoom": settings.ui.commander_bg_zoom})
 
 
 def _best_deck_votes_bucket(state: dict) -> dict:
@@ -2360,6 +2374,8 @@ def _best_deck_candidates_for_owner(raffle_list: list[dict], owner_name: str) ->
             "deckersteller": (entry.get("deckersteller") or "").strip(),
             "deck_owner": (entry.get("deckOwner") or "").strip(),
             "commander": commander_label,
+            "commander1": commander,
+            "commander2": commander2,
         })
 
     return sorted(candidates, key=lambda item: item["deck_id"])
@@ -2600,6 +2616,8 @@ async def current_round_report(deck_id: int):
         avatar_url = await _round_report_avatar_art_url(commander_name, commander_id)
         player_meta[player] = {
             "avatar_url": avatar_url,
+            "commander": str((owner_entry or {}).get("commander") or "").strip(),
+            "commander2": str((owner_entry or {}).get("commander2") or "").strip(),
         }
 
     return {
