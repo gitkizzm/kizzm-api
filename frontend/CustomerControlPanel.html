@@ -106,12 +106,12 @@
                         </form>
                     {% else %}
                         <div class="btn-row" style="justify-content: space-between;">
-                            <form action="/endPlayPhase" method="post" style="margin:0;">
-                                <button type="submit">Spielphase beenden</button>
+                            <form id="endPlayPhaseForm" action="/endPlayPhase" method="post" style="margin:0;">
+                                <button type="button" id="openEndPlayPhaseModal">Spielphase beenden</button>
                             </form>
 
                             <form action="/nextRound" method="post" style="margin:0;">
-                                <button type="submit" {% if pairings_phase != "playing" %}disabled{% endif %}>Nächste Runde starten</button>
+                                <button type="submit" {% if pairings_phase != "playing" or not active_round_all_tables_reported %}disabled{% endif %}>Nächste Runde starten</button>
                             </form>
                         </div>
                     {% endif %}
@@ -280,6 +280,29 @@
             <div class="modal-actions">
                 <button type="button" class="btn-ghost" id="cancelClear">Abbrechen</button>
                 <button type="button" class="btn-danger" id="confirmClear">Ja, löschen</button>
+            </div>
+        </div>
+    </div>
+
+
+    <div class="modal-overlay" id="endPlayPhaseModal" aria-hidden="true">
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="endPlayPhaseModalTitle">
+            <h2 id="endPlayPhaseModalTitle">Spielphase wirklich beenden?</h2>
+            {% if active_round > 0 and pairings_phase == "playing" %}
+                {% if active_round_all_tables_reported %}
+                    <p class="status ok" style="margin-top: 10px;">
+                        Alle Ergebnisse der aktiven Runde ({{ active_round_reported_count }}/{{ active_round_table_count }} Tische) wurden gemeldet und sind persistent gespeichert.
+                    </p>
+                {% else %}
+                    <p class="status danger" style="margin-top: 10px;">
+                        Für Runde {{ active_round }} fehlen noch Rückmeldungen von Tisch/Tischen {{ active_round_missing_tables|join(', ') }}.
+                    </p>
+                {% endif %}
+            {% endif %}
+
+            <div class="modal-actions">
+                <button type="button" class="btn-ghost" id="cancelEndPlayPhase">Abbrechen</button>
+                <button type="button" class="btn-danger" id="confirmEndPlayPhase">Ja, Spielphase beenden</button>
             </div>
         </div>
     </div>

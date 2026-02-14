@@ -96,6 +96,46 @@
     });
   }
 
+
+  function initEndPlayPhaseModal(){
+    const modal = document.getElementById("endPlayPhaseModal");
+    const openBtn = document.getElementById("openEndPlayPhaseModal");
+    const cancelBtn = document.getElementById("cancelEndPlayPhase");
+    const confirmBtn = document.getElementById("confirmEndPlayPhase");
+    const form = document.getElementById("endPlayPhaseForm");
+
+    function openModal(){
+      if(!modal) return;
+      modal.classList.add("show");
+      modal.setAttribute("aria-hidden", "false");
+      cancelBtn?.focus();
+    }
+
+    function closeModal(){
+      if(!modal) return;
+      modal.classList.remove("show");
+      modal.setAttribute("aria-hidden", "true");
+      openBtn?.focus();
+    }
+
+    openBtn?.addEventListener("click", openModal);
+    cancelBtn?.addEventListener("click", closeModal);
+
+    modal?.addEventListener("click", (e) => {
+      if(e.target === modal) closeModal();
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if(e.key === "Escape" && modal?.classList.contains("show")){
+        closeModal();
+      }
+    });
+
+    confirmBtn?.addEventListener("click", () => {
+      form?.submit();
+    });
+  }
+
   function initTabs(){
     const tabs = Array.from(document.querySelectorAll('.ccp-tab'));
     const panels = Array.from(document.querySelectorAll('.ccp-panel'));
@@ -345,6 +385,7 @@
     loadDefaultBackground();
     connectWS();
     initClearModal();
+    initEndPlayPhaseModal();
     initTabs();
     initHostsMultiselect();
     initSettingsActions();

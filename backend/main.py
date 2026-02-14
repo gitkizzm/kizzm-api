@@ -210,6 +210,53 @@ def _pairings_reports_bucket(state: dict, round_no: int) -> dict:
     round_key = str(round_no)
     return reports.setdefault(round_key, {})
 
+
+def _round_tables(state: dict, round_no: int) -> list[list[str]]:
+    rounds = (state.get("rounds") or []) if isinstance(state, dict) else []
+    if round_no <= 0 or len(rounds) < round_no:
+        return []
+    return rounds[round_no - 1] or []
+
+
+def _round_report_status(state: dict, round_no: int) -> dict:
+    tables = _round_tables(state, round_no)
+    table_count = len(tables)
+    reports_for_round = ((state.get("round_reports") or {}).get(str(round_no), {})) if isinstance(state, dict) else {}
+    reported_tables: list[int] = []
+    for table_no in range(1, table_count + 1):
+        if reports_for_round.get(str(table_no)):
+            reported_tables.append(table_no)
+
+    missing_tables = [table_no for table_no in range(1, table_count + 1) if table_no not in reported_tables]
+    return {
+        "table_count": table_count,
+        "reported_count": len(reported_tables),
+        "reported_tables": reported_tables,
+        "missing_tables": missing_tables,
+        "all_tables_reported": table_count > 0 and len(missing_tables) == 0,
+    }
+
+
+def _sync_round_completion_marker(state: dict, round_no: int) -> dict:
+    status = _round_report_status(state, round_no)
+    completion = state.get("round_completion") if isinstance(state.get("round_completion"), dict) else {}
+    round_key = str(round_no)
+    prev_completed_at = (completion.get(round_key) or {}).get("completed_at")
+
+    completed_at = None
+    if status["all_tables_reported"]:
+        completed_at = prev_completed_at or datetime.now(timezone.utc).isoformat()
+
+    completion[round_key] = {
+        "table_count": status["table_count"],
+        "reported_count": status["reported_count"],
+        "missing_tables": status["missing_tables"],
+        "all_tables_reported": status["all_tables_reported"],
+        "completed_at": completed_at,
+    }
+    state["round_completion"] = completion
+    return completion[round_key]
+
 def _global_signature(start_file_exists: bool, raffle_list: list[dict]) -> str:
     return global_signature(start_file_exists, raffle_list, pairings_loader=_load_pairings)
 
@@ -972,6 +1019,10 @@ def _debug_next_round_or_end_in_memory(raffle_list: list[dict], state: dict) -> 
 
     # If no configured rounds (shouldn't happen), end to voting.
     if not rounds:
+        active_round = int(state.get("active_round") or 0)
+        if active_round > 0:
+            _sync_round_completion_marker(state, active_round)
+
         state["phase"] = "voting"
         _atomic_write_pairings(state)
         for e in raffle_list:
@@ -982,6 +1033,10 @@ def _debug_next_round_or_end_in_memory(raffle_list: list[dict], state: dict) -> 
 
     # If already beyond last configured round -> end.
     if active >= len(rounds):
+        active_round = int(state.get("active_round") or 0)
+        if active_round > 0:
+            _sync_round_completion_marker(state, active_round)
+
         state["phase"] = "voting"
         _atomic_write_pairings(state)
         for e in raffle_list:
@@ -992,6 +1047,7 @@ def _debug_next_round_or_end_in_memory(raffle_list: list[dict], state: dict) -> 
 
     # Normal round progression for rounds 1..3
     if active < 4:
+        _sync_round_completion_marker(state, active)
         active += 1
         state["active_round"] = active
         _atomic_write_pairings(state)
@@ -1008,6 +1064,10 @@ def _debug_next_round_or_end_in_memory(raffle_list: list[dict], state: dict) -> 
         else:
             # If we don't have a round 5 configured, keep round 4 as active.
             next_round = active
+
+        active_round = int(state.get("active_round") or 0)
+        if active_round > 0:
+            _sync_round_completion_marker(state, active_round)
 
         state["phase"] = "voting"
         _atomic_write_pairings(state)
@@ -1361,6 +1421,18 @@ async def customer_control_panel(request: Request):
     active_round = int(pair.get("active_round") or 0) if pair else 0
     pairings_started = bool(pair) and active_round > 0
     voting_results_published = bool(_published_voting_results(pair)) if isinstance(pair, dict) else False
+    active_round_status = _round_report_status(pair, active_round) if pairings_phase == "playing" and active_round > 0 else {
+        "table_count": 0,
+        "reported_count": 0,
+        "reported_tables": [],
+        "missing_tables": [],
+        "all_tables_reported": False,
+    }
+    completion_map = (pair.get("round_completion") or {}) if isinstance(pair, dict) else {}
+    completion_entry = completion_map.get(str(active_round)) or {}
+    active_round_reports_persisted = bool(
+        active_round_status.get("all_tables_reported") and completion_entry.get("completed_at")
+    )
 
     # für Host-Auswahl (nur sinnvoll nach Start + alle bestätigt)
     players = _deckowners(raffle_list) if start_file_exists else []
@@ -1476,6 +1548,11 @@ async def customer_control_panel(request: Request):
             "round_tables": round_tables,
             "default_num_pods": settings.default_num_pods,
             "min_decks_to_start": settings.min_decks_to_start,
+            "active_round_all_tables_reported": active_round_status.get("all_tables_reported"),
+            "active_round_missing_tables": active_round_status.get("missing_tables") or [],
+            "active_round_reported_count": active_round_status.get("reported_count") or 0,
+            "active_round_table_count": active_round_status.get("table_count") or 0,
+            "active_round_reports_persisted": active_round_reports_persisted,
         }
     )
 
@@ -2690,6 +2767,7 @@ async def submit_round_report(payload: dict = Body(...)):
             "reported_by": entry.get("deckOwner") or "",
             "submitted_at": datetime.now(timezone.utc).isoformat(),
         }
+        _sync_round_completion_marker(state, active_round)
         _atomic_write_pairings(state)
 
     await notify_state_change()
@@ -2711,6 +2789,7 @@ async def reset_round_report(round_no: int = Form(...), table_no: int = Form(...
         else:
             reports.pop(str(round_no), None)
         state["round_reports"] = reports
+        _sync_round_completion_marker(state, int(round_no))
         _atomic_write_pairings(state)
 
     await notify_state_change()
@@ -2818,11 +2897,16 @@ async def next_round():
 
         rounds = state.get("rounds") or []
         active = int(state.get("active_round") or 1)
+        current_round_status = _round_report_status(state, active)
+        if current_round_status.get("table_count") > 0 and not current_round_status.get("all_tables_reported"):
+            missing = ", ".join([f"Tisch {t}" for t in current_round_status.get("missing_tables") or []])
+            raise HTTPException(status_code=400, detail=f"Nächste Runde kann erst gestartet werden, wenn alle Tische gemeldet haben. Fehlend: {missing}")
 
         if active >= len(rounds):
             # keine nächste Runde mehr -> bleibt bei letzter Runde, oder du könntest automatisch voting setzen
             return RedirectResponse(url="/CCP", status_code=303)
 
+        _sync_round_completion_marker(state, active)
         active += 1
         state["active_round"] = active
         _atomic_write_pairings(state)
@@ -2840,6 +2924,10 @@ async def end_play_phase():
         state = _load_pairings()
         if not state:
             raise HTTPException(status_code=400, detail="Pairings wurden noch nicht gestartet.")
+
+        active_round = int(state.get("active_round") or 0)
+        if active_round > 0:
+            _sync_round_completion_marker(state, active_round)
 
         state["phase"] = "voting"
         _atomic_write_pairings(state)
