@@ -29,9 +29,9 @@ uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
 
 ## Ergebnisvariablen im Event-Speicher
 
-Der Entwicklungs-Endpunkt `/ergebnisse` zeigt pro Deck eine Zeile mit den unten beschriebenen Variablen.
+Der Entwicklungs-Endpunkt `/results` zeigt pro Deck eine Zeile mit den unten beschriebenen Variablen.
 
-| Variable (Spaltenname in `/ergebnisse`) | Bezugsperson | Erfassung/Berechnung | Speicherung | Beschreibung |
+| Variable (Spaltenname in `/results`) | Bezugsperson | Erfassung/Berechnung | Speicherung | Beschreibung |
 |---|---|---|---|---|
 | `deck_id` | Deck | Bei Registrierung vergeben/übernommen | `raffle.json` pro Deck-Eintrag | Eindeutige Deck-ID innerhalb des Events. |
 | `deckersteller` | Deck-Ersteller | Bei Registrierung aus dem Formular | `raffle.json` pro Deck-Eintrag | Person, die das Deck gebaut hat. |
@@ -42,8 +42,8 @@ Der Entwicklungs-Endpunkt `/ergebnisse` zeigt pro Deck eine Zeile mit den unten 
 | `best_deck_votes.{deck_id}.1` | Votender Deck-Owner | Top-3-Voting-Eingabe eines Deck-Owners (Platz 1) | `pairings.json` unter `best_deck_votes` | Deck-ID, die als #1 gewählt wurde. |
 | `best_deck_votes.{deck_id}.2` | Votender Deck-Owner | Top-3-Voting-Eingabe eines Deck-Owners (Platz 2) | `pairings.json` unter `best_deck_votes` | Deck-ID, die als #2 gewählt wurde. |
 | `best_deck_votes.{deck_id}.3` | Votender Deck-Owner | Top-3-Voting-Eingabe eines Deck-Owners (Platz 3) | `pairings.json` unter `best_deck_votes` | Deck-ID, die als #3 gewählt wurde. |
-| `calculated.top3_received_vote_points` | Deck-Ersteller (über dessen Deck) | Berechnet aus allen Top-3-Votes (`#1=3`, `#2=2`, `#3=1`) | Laufzeitberechnung für `/ergebnisse` (nicht persistiert) | Summe der erhaltenen Punkte eines Decks im Top-3-Voting. |
-| `calculated.top3_received_rank` | Deck-Ersteller (über dessen Deck) | Sortierung nach `calculated.top3_received_vote_points` (absteigend, Tie-Break über `deck_id`) | Laufzeitberechnung für `/ergebnisse` (nicht persistiert) | Platzierung eines Decks im Top-3-Voting. |
+| `calculated.top3_received_vote_points` | Deck-Ersteller (über dessen Deck) | Berechnet aus allen Top-3-Votes (`#1=3`, `#2=2`, `#3=1`) | Laufzeitberechnung für `/results` (nicht persistiert) | Summe der erhaltenen Punkte eines Decks im Top-3-Voting. |
+| `calculated.top3_received_rank` | Deck-Ersteller (über dessen Deck) | Sortierung nach `calculated.top3_received_vote_points` (absteigend, Tie-Break über `deck_id`) | Laufzeitberechnung für `/results` (nicht persistiert) | Platzierung eines Decks im Top-3-Voting. |
 | `calculated.top3_rank_points_used_for_overall` | Deck-Ersteller | Aus `calculated.top3_received_rank` abgeleitet: Rank `1..8` ergibt `8..1` Punkte, ab Rank `9` = `0` | Bereits in `pairings.json -> voting_results.data.rows[].deck_voting_points` nach Publish, sonst Laufzeitberechnung | Die Deck-Voting-Punkte, die in die Gesamtwertung eingehen. |
 | `deck_creator_guess_votes.{deck_id}` | Votender Deck-Owner | Voting-Eingabe eines Deck-Owners im Deckraten | `pairings.json` unter `deck_creator_guess_votes` | Mapping *Deckersteller → vermutete Deck-ID* für einen Voter. |
 | `calculated.round_phase_points` | Deck-Owner | Summe der Rundenpunkte aus allen erfassten `resolved_places` (`1→4`, `2→3`, `3→2`, `4→1`) | Bereits in `pairings.json -> voting_results.data.rows[].game_points` nach Publish, sonst Laufzeitberechnung | Gesamtpunkte eines Spielers nur aus der Rundenphase. |
@@ -58,10 +58,10 @@ Der Entwicklungs-Endpunkt `/ergebnisse` zeigt pro Deck eine Zeile mit den unten 
 - **Overall**: `game_points + top3_overall_bonus + guess_points`.
 
 
-### `/ergebnisse` als PDF exportieren
+### `/results` als PDF exportieren
 
-- Standard: `GET /ergebnisse` liefert die Ergebnistabelle als **transponierte HTML-Tabelle** (Spaltennamen als erste Spalte/Index).
-- PDF-Download: `GET /ergebnisse?PDF=true` liefert die Ergebnistabelle als PDF-Datei (`ergebnisse.pdf`) zum Download.
+- Standard: `GET /results` liefert die Ergebnistabelle als **transponierte HTML-Tabelle** (Spaltennamen als erste Spalte/Index).
+- PDF-Download: `GET /results?PDF=true` liefert die Ergebnistabelle als PDF-Datei (`results_<YYYY-MM-DDTHH-MM>.pdf`) zum Download.
 - Für bessere Lesbarkeit wird die Tabelle im PDF ebenfalls **transponiert** (Spaltennamen werden zur ersten Spalte/Index), im **Portrait-Format** gerendert, mit **Zeilenumbrüchen in Zellen** sowie **automatischen Seitenumbrüchen**.
 
 ## Debug-Automation (`/debug`)
