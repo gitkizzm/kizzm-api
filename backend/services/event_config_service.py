@@ -55,7 +55,7 @@ class UISettings(BaseModel):
     commander_bg_zoom: float = COMMANDER_BG_ZOOM
     chip_preview_modal_style: bool = False
     chip_preview_reveal_animation: bool = False
-    chip_preview_swipe_enabled: bool = True
+    chip_preview_swipe_enabled: bool = False
 
 
 class APISettings(BaseModel):

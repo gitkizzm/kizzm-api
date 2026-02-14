@@ -404,7 +404,7 @@ async function ensureCardPreviewLoaded(){
       if(!r.ok) return;
       chipPreviewUi.modalStyle = !!data?.settings?.ui?.chip_preview_modal_style;
       chipPreviewUi.revealAnimation = !!data?.settings?.ui?.chip_preview_reveal_animation;
-      chipPreviewUi.swipeEnabled = data?.settings?.ui?.chip_preview_swipe_enabled !== false;
+      chipPreviewUi.swipeEnabled = data?.settings?.ui?.chip_preview_swipe_enabled === true;
     }catch(_){
       // defaults bleiben aktiv
     }

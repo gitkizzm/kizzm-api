@@ -1011,23 +1011,28 @@ body.ccp-page .ccp-card{
 
 .chip-preview-overlay .card-preview,
 #chipPreviewModalCardHost .card-preview{
-  position: static;
-  transform: none;
-  pointer-events: auto;
   margin: 0;
   width: fit-content;
 }
 
+.card-preview.is-chip-preview-expanded{
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 72;
+  pointer-events: auto;
+}
 
 .card-preview.is-chip-preview-expanded .card3d{
-  width: min(70vw, calc(70vh * 5 / 7));
-  max-height: 70vh;
+  width: min(85vw, calc(85vh * 5 / 7));
+  max-height: 85vh;
   animation: none !important;
 }
 
 .card-preview.is-chip-preview-expanded.is-pair .card3d{
-  width: min(36vw, calc(70vh * 5 / 7));
-  max-height: 70vh;
+  width: min(44vw, calc(85vh * 5 / 7));
+  max-height: 85vh;
 }
 
 .card-preview.is-chip-preview-expanded.is-chip-preview-partner{
@@ -1055,12 +1060,12 @@ body.ccp-page .ccp-card{
 
 .card-preview.is-chip-preview-expanded.is-chip-preview-partner.is-swipe-swapped .card3d.slot1{
   z-index: 1;
-  transform: rotateX(8deg) rotateY(-2deg) translateX(-80%) translateY(10%);
+  transform: rotateX(8deg) rotateY(-7deg) translateX(0) translateY(0);
 }
 
 .card-preview.is-chip-preview-expanded.is-chip-preview-partner.is-swipe-swapped .card3d.slot2{
   z-index: 2;
-  transform: rotateX(8deg) rotateY(-7deg) translateX(0) translateY(0);
+  transform: rotateX(8deg) rotateY(-2deg) translateX(-80%) translateY(10%);
 }
 
 .chip-preview-close{
