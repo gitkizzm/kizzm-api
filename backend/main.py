@@ -381,9 +381,9 @@ async def get_form(
         entry_pairing_phase = (existing_entry.get("pairing_phase") or "").strip().lower() if existing_entry else ""
         entry_pairing_round = int(existing_entry.get("pairing_round") or 0) if existing_entry else 0
 
-        if pairings_phase == "voting" or entry_pairing_phase == "voting":
-            glasscard_title = "Best-Deck-Voting"
-            if existing_entry:
+        if pairings_phase in {"pre_voting", "voting"} or entry_pairing_phase in {"pre_voting", "voting"}:
+            glasscard_title = "Warten auf das Voting" if pairings_phase == "pre_voting" or entry_pairing_phase == "pre_voting" else "Best-Deck-Voting"
+            if existing_entry and glasscard_title != "Warten auf das Voting":
                 vote_key = str(deck_id)
                 top3_vote = ((pairings.get("best_deck_votes") or {}) if isinstance(pairings, dict) else {}).get(vote_key)
                 deckraten_vote = ((pairings.get("deck_creator_guess_votes") or {}) if isinstance(pairings, dict) else {}).get(vote_key)
@@ -2095,6 +2095,46 @@ def _published_voting_results(state: dict | None) -> dict | None:
     return data if isinstance(data, dict) else None
 
 
+def _calculate_play_phase_overview(raffle_list: list[dict], state: dict) -> dict:
+    owners = sorted({(e.get("deckOwner") or "").strip() for e in raffle_list if (e.get("deckOwner") or "").strip()})
+    gameplay_points = {owner: 0 for owner in owners}
+    place_points = {1: 4, 2: 3, 3: 2, 4: 1}
+
+    round_reports = (state.get("round_reports") or {}) if isinstance(state, dict) else {}
+    for reports_for_round in round_reports.values():
+        if not isinstance(reports_for_round, dict):
+            continue
+        for report in reports_for_round.values():
+            resolved = (report or {}).get("resolved_places") or {}
+            if not isinstance(resolved, dict):
+                continue
+            for player, place in resolved.items():
+                owner = (player or "").strip()
+                if owner not in gameplay_points:
+                    continue
+                try:
+                    p = int(place)
+                except (TypeError, ValueError):
+                    continue
+                gameplay_points[owner] += place_points.get(p, 0)
+
+    rows = []
+    for owner in owners:
+        rows.append({
+            "player": owner,
+            "game_points": int(gameplay_points.get(owner, 0) or 0),
+        })
+
+    rows.sort(key=lambda r: (-int(r.get("game_points") or 0), str(r.get("player") or "").lower()))
+    for idx, row in enumerate(rows, start=1):
+        row["rank"] = idx
+
+    return {
+        "rows": rows,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
 def _calculate_voting_results(raffle_list: list[dict], state: dict) -> dict:
     owners = sorted({(e.get("deckOwner") or "").strip() for e in raffle_list if (e.get("deckOwner") or "").strip()})
     built_by_owner: dict[str, dict] = {}
@@ -2561,8 +2601,9 @@ async def current_best_deck_voting(deck_id: int):
     raffle_list = _load_raffle_list()
     state = _load_pairings() or {}
 
-    if not state or (state.get("phase") or "") != "voting":
-        raise HTTPException(status_code=400, detail="Aktuell keine aktive Voting-Phase.")
+    phase = (state.get("phase") or "").strip().lower()
+    if not state or phase not in {"pre_voting", "voting"}:
+        raise HTTPException(status_code=400, detail="Aktuell keine aktive Vorabauswertung/Voting-Phase.")
 
     entry = next((e for e in raffle_list if e.get("deck_id") == deck_id), None)
     if not entry:
@@ -2571,6 +2612,19 @@ async def current_best_deck_voting(deck_id: int):
     owner_name = (entry.get("deckOwner") or "").strip()
     if not owner_name:
         raise HTTPException(status_code=400, detail="Deck hat keinen zugewiesenen Owner.")
+
+    if phase == "pre_voting":
+        overview = _calculate_play_phase_overview(raffle_list, state)
+        return {
+            "phase_title": "Warten auf das Voting",
+            "voting_kind": "pre_voting_overview",
+            "status_message": "",
+            "candidates": [],
+            "places": [],
+            "placements": {},
+            "has_vote": False,
+            "results": overview,
+        }
 
     published = _published_voting_results(state)
     if published:
@@ -3027,10 +3081,33 @@ async def end_play_phase():
         if active_round > 0:
             _sync_round_completion_marker(state, active_round)
 
+        state["phase"] = "pre_voting"
+        _atomic_write_pairings(state)
+
+        raffle_list = _load_raffle_list()
+        for e in raffle_list:
+            if e.get("deck_id") is not None:
+                e["pairing_phase"] = "pre_voting"
+        _atomic_write_json(FILE_PATH, raffle_list)
+
+    await notify_state_change()
+    return RedirectResponse(url="/CCP", status_code=303)
+
+
+@app.post("/startVotingPhase")
+async def start_voting_phase():
+    async with RAFFLE_LOCK:
+        state = _load_pairings()
+        if not state:
+            raise HTTPException(status_code=400, detail="Pairings wurden noch nicht gestartet.")
+
+        phase = (state.get("phase") or "").strip().lower()
+        if phase != "pre_voting":
+            raise HTTPException(status_code=400, detail="Vorabauswertung ist nicht aktiv.")
+
         state["phase"] = "voting"
         _atomic_write_pairings(state)
 
-        # optional: in raffle.json markieren
         raffle_list = _load_raffle_list()
         for e in raffle_list:
             if e.get("deck_id") is not None:

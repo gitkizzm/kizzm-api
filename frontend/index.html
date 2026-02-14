@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
-    {% set show_card_preview = not (existing_entry and (existing_entry.pairing_round or existing_entry.pairing_phase == "voting")) %}
+    {% set show_card_preview = not (existing_entry and (existing_entry.pairing_round or existing_entry.pairing_phase in ["voting", "pre_voting"])) %}
     <!-- 3D Card Preview (überlappt die glass-card leicht am oberen Rand) -->
     {% if show_card_preview %}
         <div id="cardPreview"
@@ -45,7 +45,7 @@
             {% endif %}
         {% elif existing_entry %}
         {% if start_file_exists %}
-        {% if existing_entry.pairing_round and existing_entry.pairing_phase != "voting" %}
+        {% if existing_entry.pairing_round and existing_entry.pairing_phase not in ["voting", "pre_voting"] %}
             <div class="status ok">
                 Hallo {{ deckOwner }}.
             </div>
@@ -87,7 +87,7 @@
                 <button type="button" id="openReportModal">Ergebnis melden</button>
             </div>
         {% else %}
-        {% if existing_entry.pairing_phase == "voting" %}
+        {% if existing_entry.pairing_phase in ["voting", "pre_voting"] %}
             <div class="status" id="votingHint" style="margin-top: 12px;">
                 Hallo {{ deckOwner }}.
             </div>
@@ -207,7 +207,7 @@
         <script src="/static/index.js" defer></script>
 
     </div>
-    {% if existing_entry and ((existing_entry.pairing_round and existing_entry.pairing_phase != "voting") or existing_entry.pairing_phase == "voting") %}
+    {% if existing_entry and ((existing_entry.pairing_round and existing_entry.pairing_phase not in ["voting", "pre_voting"]) or existing_entry.pairing_phase in ["voting", "pre_voting"]) %}
     <div id="chipPreviewOverlay" class="chip-preview-overlay" style="display:none;">
         <button type="button" id="chipPreviewOverlayClose" class="chip-preview-close" aria-label="Preview schließen">✕</button>
         <div id="cardPreview" class="card-preview is-single" aria-hidden="true" data-reveal="0">
