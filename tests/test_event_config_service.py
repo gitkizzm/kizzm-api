@@ -51,6 +51,14 @@ class EventConfigServiceTests(unittest.TestCase):
             defaults = get_default_settings(participants_path=p)
             self.assertEqual(defaults.participants, ["Alice", "Bob"])
 
+
+    def test_default_voting_points_scheme_contains_all_categories(self):
+        cur = EventSettings()
+
+        self.assertEqual(cur.voting.points_scheme["play_phase"], {"1": 4, "2": 3, "3": 2, "4": 1})
+        self.assertEqual(cur.voting.points_scheme["best_deck_voting"], {"1": 3, "2": 2, "3": 1})
+        self.assertEqual(cur.voting.points_scheme["best_deck_overall"], {"1": 8, "2": 5, "3": 3, "4": 2, "5": 1, "6": 0, "7": 0, "8": 0})
+        self.assertEqual(cur.voting.points_scheme["deck_creator_guess"], {"correct_guess": 1})
     def test_load_event_settings_uses_participant_defaults_when_file_has_empty_list(self):
         with tempfile.TemporaryDirectory() as tmp:
             participants_file = Path(tmp) / "teilnehmer.txt"
