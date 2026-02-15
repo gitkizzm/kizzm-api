@@ -88,6 +88,16 @@ class EventConfigServiceTests(unittest.TestCase):
             self.assertEqual(meta["source"], "file")
             self.assertEqual(loaded.participants, ["Alice", "Bob"])
 
+    def test_pairing_placement_chip_fill_mode_is_editable_in_voting(self):
+        cur = EventSettings()
+        updated, changed = apply_settings_patch(
+            cur,
+            {"ui": {"pairing_placement_chip_fill_mode": True}},
+            EventState.VOTING,
+        )
+        self.assertTrue(updated.ui.pairing_placement_chip_fill_mode)
+        self.assertIn("ui.pairing_placement_chip_fill_mode", changed)
+
 
 if __name__ == "__main__":
     unittest.main()

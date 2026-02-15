@@ -58,6 +58,7 @@ class UISettings(BaseModel):
     chip_preview_modal_style: bool = False
     chip_preview_reveal_animation: bool = False
     chip_preview_swipe_enabled: bool = False
+    pairing_placement_chip_fill_mode: bool = False
 
 
 class APISettings(BaseModel):
@@ -135,6 +136,7 @@ SETTING_LOCKS: dict[str, SettingsLockLevel] = {
     "ui.chip_preview_modal_style": SettingsLockLevel.ALWAYS,
     "ui.chip_preview_reveal_animation": SettingsLockLevel.ALWAYS,
     "ui.chip_preview_swipe_enabled": SettingsLockLevel.ALWAYS,
+    "ui.pairing_placement_chip_fill_mode": SettingsLockLevel.ALWAYS,
     "api.suggest_min_chars": SettingsLockLevel.ALWAYS,
     "api.suggest_limit": SettingsLockLevel.ALWAYS,
     "voting.scheme_type": SettingsLockLevel.UNTIL_VOTING_START,
