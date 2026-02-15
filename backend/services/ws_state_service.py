@@ -84,6 +84,7 @@ def deck_signature(
     deck_id: int,
     start_file_exists: bool,
     raffle_list: list[dict],
+    pairings_loader: Callable[[], dict | None] | None = None,
     settings_loader: Callable[[], dict] | None = None,
 ) -> str:
     entry = None
@@ -95,6 +96,14 @@ def deck_signature(
     registered = entry is not None
     deck_owner = entry.get("deckOwner") if entry else None
     received_confirmed = entry.get("received_confirmed") if entry else None
+    pair = pairings_loader() if pairings_loader else {}
+    pair = pair if isinstance(pair, dict) else {}
+
+    pairing_round = entry.get("pairing_round") if entry else None
+    pairing_table = entry.get("pairing_table") if entry else None
+    round_reports = pair.get("round_reports") if isinstance(pair.get("round_reports"), dict) else {}
+    round_bucket = round_reports.get(str(pairing_round)) if pairing_round is not None else None
+    table_report = round_bucket.get(str(pairing_table)) if isinstance(round_bucket, dict) and pairing_table is not None else None
 
     obj = {
         "deck_id": deck_id,
@@ -102,9 +111,11 @@ def deck_signature(
         "registered": registered,
         "deckOwner": deck_owner,
         "received_confirmed": received_confirmed,
-        "pairing_round": entry.get("pairing_round") if entry else None,
-        "pairing_table": entry.get("pairing_table") if entry else None,
+        "pairing_round": pairing_round,
+        "pairing_table": pairing_table,
         "pairing_phase": entry.get("pairing_phase") if entry else None,
+        "table_report": table_report or {},
+        "voting_results": pair.get("voting_results") or {},
         "settings": settings_loader() if settings_loader else {},
     }
     return hashlib.sha1(json.dumps(obj, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()
