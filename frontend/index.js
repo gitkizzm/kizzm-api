@@ -66,6 +66,7 @@ async function ensureCardPreviewLoaded(){
     modalStyle: false,
     revealAnimation: false,
     swipeEnabled: true,
+    pairingPlacementChipFillMode: false,
   };
 
   const chipPreviewOverlayEl = document.getElementById('chipPreviewOverlay');
@@ -397,11 +398,13 @@ async function ensureCardPreviewLoaded(){
   function updatePairingPlacementBadges(chips, reportData){
     const hasReport = !!reportData?.has_report;
     const placesByPlayer = reportData?.report?.resolved_places || {};
+    const useChipFillMode = chipPreviewUi.pairingPlacementChipFillMode === true;
 
     chips.forEach((chip) => {
       const badgeEl = chip.querySelector('.pairing-placement-badge');
       if(!badgeEl) return;
 
+      chip.classList.remove('pairing-placement-chip-fill-1', 'pairing-placement-chip-fill-2', 'pairing-placement-chip-fill-3', 'pairing-placement-chip-fill-4');
       badgeEl.style.display = 'none';
       badgeEl.textContent = '';
       badgeEl.className = 'pairing-placement-badge';
@@ -409,6 +412,11 @@ async function ensureCardPreviewLoaded(){
       const player = String(chip.dataset.player || '').trim();
       const place = Number(placesByPlayer?.[player] || 0);
       if(!hasReport || place < 1 || place > 4) return;
+
+      if(useChipFillMode){
+        chip.classList.add(`pairing-placement-chip-fill-${place}`);
+        return;
+      }
 
       badgeEl.textContent = String(place);
       badgeEl.classList.add(`place-${place}`);
@@ -461,6 +469,7 @@ async function ensureCardPreviewLoaded(){
       chipPreviewUi.modalStyle = !!data?.settings?.ui?.chip_preview_modal_style;
       chipPreviewUi.revealAnimation = !!data?.settings?.ui?.chip_preview_reveal_animation;
       chipPreviewUi.swipeEnabled = data?.settings?.ui?.chip_preview_swipe_enabled === true;
+      chipPreviewUi.pairingPlacementChipFillMode = data?.settings?.ui?.pairing_placement_chip_fill_mode === true;
     }catch(_){
       // defaults bleiben aktiv
     }
