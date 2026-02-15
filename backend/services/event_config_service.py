@@ -47,8 +47,7 @@ class ScryfallSettings(BaseModel):
     default_background_query: str = DEFAULT_BG_QUERY
     random_commander_query: str = "game:paper is:commander -t:background"
     round_report_avatar_query_template: str = 'game:paper is:normal !"{name}"'
-    commander_preview_query_template: str = 'game:paper is:commander !"{name}"'
-    card_preview_query_template: str = 'game:paper is:commander !"{name}"'
+    card_preview_query_template: str = 'game:paper is:commander is:normal !"{name}"'
     card_preview_fallback_query_template: str = 'game:paper !"{name}"'
 
 
@@ -58,6 +57,7 @@ class UISettings(BaseModel):
     chip_preview_modal_style: bool = False
     chip_preview_reveal_animation: bool = False
     chip_preview_swipe_enabled: bool = False
+    pairing_placement_chip_fill_mode: bool = True
 
 
 class APISettings(BaseModel):
@@ -127,7 +127,6 @@ SETTING_LOCKS: dict[str, SettingsLockLevel] = {
     "scryfall.default_background_query": SettingsLockLevel.ALWAYS,
     "scryfall.random_commander_query": SettingsLockLevel.UNTIL_PAIRINGS_START,
     "scryfall.round_report_avatar_query_template": SettingsLockLevel.UNTIL_PAIRINGS_START,
-    "scryfall.commander_preview_query_template": SettingsLockLevel.UNTIL_PAIRINGS_START,
     "scryfall.card_preview_query_template": SettingsLockLevel.ALWAYS,
     "scryfall.card_preview_fallback_query_template": SettingsLockLevel.ALWAYS,
     "ui.default_bg_zoom": SettingsLockLevel.ALWAYS,
@@ -135,6 +134,7 @@ SETTING_LOCKS: dict[str, SettingsLockLevel] = {
     "ui.chip_preview_modal_style": SettingsLockLevel.ALWAYS,
     "ui.chip_preview_reveal_animation": SettingsLockLevel.ALWAYS,
     "ui.chip_preview_swipe_enabled": SettingsLockLevel.ALWAYS,
+    "ui.pairing_placement_chip_fill_mode": SettingsLockLevel.ALWAYS,
     "api.suggest_min_chars": SettingsLockLevel.ALWAYS,
     "api.suggest_limit": SettingsLockLevel.ALWAYS,
     "voting.scheme_type": SettingsLockLevel.UNTIL_VOTING_START,
@@ -144,6 +144,21 @@ SETTING_LOCKS: dict[str, SettingsLockLevel] = {
 
 def _to_dict(model: BaseModel) -> dict[str, Any]:
     return model.model_dump()
+
+
+def _migrate_legacy_settings_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        return payload
+
+    scryfall = payload.get("scryfall")
+    if not isinstance(scryfall, dict):
+        return payload
+
+    commander_preview = scryfall.get("commander_preview_query_template")
+    card_preview = scryfall.get("card_preview_query_template")
+    if commander_preview and not card_preview:
+        scryfall["card_preview_query_template"] = commander_preview
+    return payload
 
 
 def load_event_settings(
@@ -160,6 +175,7 @@ def load_event_settings(
     try:
         with path.open("r", encoding="utf-8") as f:
             payload = json.load(f)
+            payload = _migrate_legacy_settings_payload(payload)
     except Exception as exc:
         return get_default_settings(participants_path), {"source": "defaults", "path": str(path), "error": f"read_error: {exc}"}
 

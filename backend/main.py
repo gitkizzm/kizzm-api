@@ -270,6 +270,7 @@ def _deck_signature(deck_id: int, start_file_exists: bool, raffle_list: list[dic
         deck_id,
         start_file_exists,
         raffle_list,
+        pairings_loader=_load_pairings,
         settings_loader=lambda: settings_as_dict(_current_settings()),
     )
 
@@ -2153,8 +2154,7 @@ async def background_commander(name: str = ""):
     safe = name.replace('"', '\\"')
     default_q_template = (
         settings.scryfall.card_preview_query_template
-        or settings.scryfall.commander_preview_query_template
-        or 'game:paper is:commander !"{name}"'
+        or 'game:paper is:commander is:normal !"{name}"'
     )
     fallback_q_template = settings.scryfall.card_preview_fallback_query_template or ""
 

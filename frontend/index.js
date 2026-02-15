@@ -66,6 +66,7 @@ async function ensureCardPreviewLoaded(){
     modalStyle: false,
     revealAnimation: false,
     swipeEnabled: true,
+    pairingPlacementChipFillMode: false,
   };
 
   const chipPreviewOverlayEl = document.getElementById('chipPreviewOverlay');
@@ -372,6 +373,57 @@ async function ensureCardPreviewLoaded(){
     </div>`;
   }
 
+  function updatePlayingStatusMessage(table, hasReport){
+    const statusEl = document.getElementById('playingStatusMessage');
+    if(!statusEl) return;
+
+    const owner = String(statusEl.dataset.owner || '').trim();
+    const tableNo = Number(table || statusEl.dataset.table || 0);
+    if(hasReport){
+      statusEl.textContent = `Hallo ${owner}, bitte warte, bis die nächste Runde startet.`;
+      statusEl.classList.remove('ok');
+      statusEl.classList.add('danger');
+      return;
+    }
+
+    if(tableNo > 0){
+      statusEl.textContent = `Hallo ${owner}, du sitzt an Tisch ${tableNo}.`;
+    }else{
+      statusEl.textContent = `Hallo ${owner}.`;
+    }
+    statusEl.classList.remove('danger');
+    statusEl.classList.add('ok');
+  }
+
+  function updatePairingPlacementBadges(chips, reportData){
+    const hasReport = !!reportData?.has_report;
+    const placesByPlayer = reportData?.report?.resolved_places || {};
+    const useChipFillMode = chipPreviewUi.pairingPlacementChipFillMode === true;
+
+    chips.forEach((chip) => {
+      const badgeEl = chip.querySelector('.pairing-placement-badge');
+      if(!badgeEl) return;
+
+      chip.classList.remove('pairing-placement-chip-fill-1', 'pairing-placement-chip-fill-2', 'pairing-placement-chip-fill-3', 'pairing-placement-chip-fill-4');
+      badgeEl.style.display = 'none';
+      badgeEl.textContent = '';
+      badgeEl.className = 'pairing-placement-badge';
+
+      const player = String(chip.dataset.player || '').trim();
+      const place = Number(placesByPlayer?.[player] || 0);
+      if(!hasReport || place < 1 || place > 4) return;
+
+      if(useChipFillMode){
+        chip.classList.add(`pairing-placement-chip-fill-${place}`);
+        return;
+      }
+
+      badgeEl.textContent = String(place);
+      badgeEl.classList.add(`place-${place}`);
+      badgeEl.style.display = 'flex';
+    });
+  }
+
   async function hydratePairingMatchupChips(){
     const chips = Array.from(document.querySelectorAll('.pairing-matchup-grid .report-player-chip--matchup[data-player]'));
     if(chips.length === 0 || currentDeckId <= 0) return;
@@ -400,6 +452,10 @@ async function ensureCardPreviewLoaded(){
           avatarEl.innerHTML = `<span class="report-player-avatar-fallback">${escapeHtml(reportAvatarLabel(player))}</span>`;
         }
       });
+
+      updatePlayingStatusMessage(data?.table, !!data?.has_report);
+      updatePairingPlacementBadges(chips, data);
+      if(openReportModalBtn) openReportModalBtn.disabled = !!data?.has_report;
     }catch(_){
       // Fallback bleibt bei servergerenderten Initialen.
     }
@@ -413,6 +469,7 @@ async function ensureCardPreviewLoaded(){
       chipPreviewUi.modalStyle = !!data?.settings?.ui?.chip_preview_modal_style;
       chipPreviewUi.revealAnimation = !!data?.settings?.ui?.chip_preview_reveal_animation;
       chipPreviewUi.swipeEnabled = data?.settings?.ui?.chip_preview_swipe_enabled === true;
+      chipPreviewUi.pairingPlacementChipFillMode = data?.settings?.ui?.pairing_placement_chip_fill_mode === true;
     }catch(_){
       // defaults bleiben aktiv
     }
@@ -1545,8 +1602,8 @@ async function ensureCardPreviewLoaded(){
 
     initReportModal();
     initBestDeckVoting();
-    await hydratePairingMatchupChips();
     await loadChipPreviewSettings();
+    await hydratePairingMatchupChips();
     bindChipPreviewEvents();
 
     document.addEventListener('keydown', (ev) => {

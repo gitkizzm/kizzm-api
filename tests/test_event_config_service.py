@@ -76,6 +76,13 @@ class EventConfigServiceTests(unittest.TestCase):
         self.assertEqual(cur.voting.points_scheme["best_deck_voting"], {"1": 3, "2": 2, "3": 1})
         self.assertEqual(cur.voting.points_scheme["best_deck_overall"], {"1": 8, "2": 5, "3": 3, "4": 2, "5": 1, "6": 0, "7": 0, "8": 0})
         self.assertEqual(cur.voting.points_scheme["deck_creator_guess"], {"correct_guess": 1})
+
+    def test_default_preview_queries_and_chip_fill_mode(self):
+        cur = EventSettings()
+        self.assertEqual(cur.scryfall.card_preview_query_template, 'game:paper is:commander is:normal !"{name}"')
+        self.assertEqual(cur.scryfall.card_preview_fallback_query_template, 'game:paper !"{name}"')
+        self.assertTrue(cur.ui.pairing_placement_chip_fill_mode)
+
     def test_load_event_settings_uses_participant_defaults_when_file_has_empty_list(self):
         with tempfile.TemporaryDirectory() as tmp:
             participants_file = Path(tmp) / "teilnehmer.txt"
@@ -87,6 +94,28 @@ class EventConfigServiceTests(unittest.TestCase):
             loaded, meta = load_event_settings(path=config_file, participants_path=participants_file)
             self.assertEqual(meta["source"], "file")
             self.assertEqual(loaded.participants, ["Alice", "Bob"])
+
+    def test_load_event_settings_migrates_legacy_commander_preview_query(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config_file = Path(tmp) / "event_config.json"
+            config_file.write_text(
+                '{"scryfall": {"commander_preview_query_template": "game:paper !\\"{name}\\""}}',
+                encoding="utf-8",
+            )
+
+            loaded, meta = load_event_settings(path=config_file)
+            self.assertEqual(meta["source"], "file")
+            self.assertEqual(loaded.scryfall.card_preview_query_template, 'game:paper !"{name}"')
+
+    def test_pairing_placement_chip_fill_mode_is_editable_in_voting(self):
+        cur = EventSettings()
+        updated, changed = apply_settings_patch(
+            cur,
+            {"ui": {"pairing_placement_chip_fill_mode": True}},
+            EventState.VOTING,
+        )
+        self.assertTrue(updated.ui.pairing_placement_chip_fill_mode)
+        self.assertIn("ui.pairing_placement_chip_fill_mode", changed)
 
 
 if __name__ == "__main__":
