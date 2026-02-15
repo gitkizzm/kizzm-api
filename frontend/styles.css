@@ -883,6 +883,11 @@ body.ccp-page .ccp-card{
   width:clamp(120px, 100%, 220px);
 }
 
+.report-player-chip--matchup .report-player-name{
+  flex:1 1 auto;
+  min-width:0;
+}
+
 .pairing-placement-badge{
   display:flex;
   align-items:center;
@@ -939,6 +944,10 @@ body.ccp-page .ccp-card{
 
 .report-player-chip--content-right .pairing-placement-badge{
   order:0;
+}
+
+.report-player-chip--content-left .pairing-placement-badge{
+  margin-left:auto;
 }
 
 .report-player-avatar{
