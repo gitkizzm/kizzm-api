@@ -372,6 +372,50 @@ async function ensureCardPreviewLoaded(){
     </div>`;
   }
 
+  function updatePlayingStatusMessage(table, hasReport){
+    const statusEl = document.getElementById('playingStatusMessage');
+    if(!statusEl) return;
+
+    const owner = String(statusEl.dataset.owner || '').trim();
+    const tableNo = Number(table || statusEl.dataset.table || 0);
+    if(hasReport){
+      statusEl.textContent = `Hallo ${owner}, bitte warte, bis die nächste Runde startet.`;
+      statusEl.classList.remove('ok');
+      statusEl.classList.add('danger');
+      return;
+    }
+
+    if(tableNo > 0){
+      statusEl.textContent = `Hallo ${owner}, du sitzt an Tisch ${tableNo}.`;
+    }else{
+      statusEl.textContent = `Hallo ${owner}.`;
+    }
+    statusEl.classList.remove('danger');
+    statusEl.classList.add('ok');
+  }
+
+  function updatePairingPlacementBadges(chips, reportData){
+    const hasReport = !!reportData?.has_report;
+    const placesByPlayer = reportData?.report?.resolved_places || {};
+
+    chips.forEach((chip) => {
+      const badgeEl = chip.querySelector('.pairing-placement-badge');
+      if(!badgeEl) return;
+
+      badgeEl.style.display = 'none';
+      badgeEl.textContent = '';
+      badgeEl.className = 'pairing-placement-badge';
+
+      const player = String(chip.dataset.player || '').trim();
+      const place = Number(placesByPlayer?.[player] || 0);
+      if(!hasReport || place < 1 || place > 4) return;
+
+      badgeEl.textContent = String(place);
+      badgeEl.classList.add(`place-${place}`);
+      badgeEl.style.display = 'flex';
+    });
+  }
+
   async function hydratePairingMatchupChips(){
     const chips = Array.from(document.querySelectorAll('.pairing-matchup-grid .report-player-chip--matchup[data-player]'));
     if(chips.length === 0 || currentDeckId <= 0) return;
@@ -400,6 +444,10 @@ async function ensureCardPreviewLoaded(){
           avatarEl.innerHTML = `<span class="report-player-avatar-fallback">${escapeHtml(reportAvatarLabel(player))}</span>`;
         }
       });
+
+      updatePlayingStatusMessage(data?.table, !!data?.has_report);
+      updatePairingPlacementBadges(chips, data);
+      if(openReportModalBtn) openReportModalBtn.disabled = !!data?.has_report;
     }catch(_){
       // Fallback bleibt bei servergerenderten Initialen.
     }
