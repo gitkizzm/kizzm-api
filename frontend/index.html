@@ -46,11 +46,10 @@
         {% elif existing_entry %}
         {% if start_file_exists %}
         {% if existing_entry.pairing_round and existing_entry.pairing_phase not in ["voting", "pre_voting"] %}
-            <div class="status ok">
-                Hallo {{ deckOwner }}.
+            <div class="status ok" id="playingStatusMessage" data-table="{{ existing_entry.pairing_table }}" data-owner="{{ deckOwner }}">
+                Hallo {{ deckOwner }}, du sitzt an Tisch {{ existing_entry.pairing_table }}.
             </div>
             <div class="status pairing-status" style="margin-top: 12px;">
-                <div class="pairing-table-label">Tisch {{ existing_entry.pairing_table }}</div>
                 <div class="pairing-matchup-grid" aria-label="Spieler-Matchup">
                     {% set players = existing_entry.pairing_players or [] %}
                     {% set slots = [
@@ -75,6 +74,7 @@
                                 <span class="report-player-avatar-fallback">{{ slot.player[:1]|upper }}</span>
                             </div>
                             <div class="report-player-name">{{ slot.player }}</div>
+                            <div class="pairing-placement-badge" style="display:none;" aria-hidden="true"></div>
                         </div>
                         {% endif %}
                     </div>
