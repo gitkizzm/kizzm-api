@@ -49,6 +49,7 @@ class ScryfallSettings(BaseModel):
     round_report_avatar_query_template: str = 'game:paper is:normal !"{name}"'
     commander_preview_query_template: str = 'game:paper is:commander !"{name}"'
     card_preview_query_template: str = 'game:paper is:commander !"{name}"'
+    card_preview_fallback_query_template: str = 'game:paper !"{name}"'
 
 
 class UISettings(BaseModel):
@@ -127,7 +128,8 @@ SETTING_LOCKS: dict[str, SettingsLockLevel] = {
     "scryfall.random_commander_query": SettingsLockLevel.UNTIL_PAIRINGS_START,
     "scryfall.round_report_avatar_query_template": SettingsLockLevel.UNTIL_PAIRINGS_START,
     "scryfall.commander_preview_query_template": SettingsLockLevel.UNTIL_PAIRINGS_START,
-    "scryfall.card_preview_query_template": SettingsLockLevel.UNTIL_PAIRINGS_START,
+    "scryfall.card_preview_query_template": SettingsLockLevel.ALWAYS,
+    "scryfall.card_preview_fallback_query_template": SettingsLockLevel.ALWAYS,
     "ui.default_bg_zoom": SettingsLockLevel.ALWAYS,
     "ui.commander_bg_zoom": SettingsLockLevel.ALWAYS,
     "ui.chip_preview_modal_style": SettingsLockLevel.ALWAYS,
