@@ -44,6 +44,23 @@ class EventConfigServiceTests(unittest.TestCase):
         self.assertIn("participants", skipped)
         self.assertIn("min_decks_to_start", changed)
 
+    def test_card_preview_queries_are_editable_in_voting(self):
+        cur = EventSettings()
+        updated, changed = apply_settings_patch(
+            cur,
+            {
+                "scryfall": {
+                    "card_preview_query_template": 'game:paper !"{name}"',
+                    "card_preview_fallback_query_template": 'game:paper name:{name}',
+                }
+            },
+            EventState.VOTING,
+        )
+        self.assertEqual(updated.scryfall.card_preview_query_template, 'game:paper !"{name}"')
+        self.assertEqual(updated.scryfall.card_preview_fallback_query_template, 'game:paper name:{name}')
+        self.assertIn("scryfall.card_preview_query_template", changed)
+        self.assertIn("scryfall.card_preview_fallback_query_template", changed)
+
     def test_default_settings_reads_participants_file(self):
         with tempfile.TemporaryDirectory() as tmp:
             p = Path(tmp) / "teilnehmer.txt"

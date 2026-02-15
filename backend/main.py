@@ -2095,6 +2095,32 @@ async def background_default():
     except Exception:
         return JSONResponse({"url": None, "zoom": settings.ui.default_bg_zoom})
 
+async def _scryfall_query_preview_image(client: httpx.AsyncClient, query: str) -> str | None:
+    query = (query or "").strip()
+    if not query:
+        return None
+
+    url = (
+        f"{SCRYFALL_BASE}/cards/search?"
+        f"q={quote_plus(query)}&unique=prints&order=released&dir=desc"
+    )
+
+    r = await client.get(url)
+    if r.status_code != 200:
+        return None
+
+    data = (r.json().get("data") or [])
+    if not data:
+        return None
+
+    for card in data:
+        img = _get_image_url(card, "border_crop") or _get_image_url(card, "large")
+        if img:
+            return img
+
+    return None
+
+
 @app.get("/api/background/commander")
 async def background_commander(name: str = ""):
     name = (name or "").strip()
@@ -2103,33 +2129,21 @@ async def background_commander(name: str = ""):
         return JSONResponse({"url": None, "zoom": settings.ui.commander_bg_zoom})
 
     safe = name.replace('"', '\\"')
-    q_template = (
+    default_q_template = (
         settings.scryfall.card_preview_query_template
         or settings.scryfall.commander_preview_query_template
         or 'game:paper is:commander !"{name}"'
     )
-    q = q_template.replace('{name}', safe)
+    fallback_q_template = settings.scryfall.card_preview_fallback_query_template or ""
 
-    url = (
-        f"{SCRYFALL_BASE}/cards/search?"
-        f"q={quote_plus(q)}&unique=prints&order=released&dir=desc"
-    )
+    default_q = default_q_template.replace('{name}', safe)
+    fallback_q = fallback_q_template.replace('{name}', safe)
 
     try:
         async with httpx.AsyncClient(timeout=SCRYFALL_TIMEOUT, headers=SCRYFALL_HEADERS) as client:
-            r = await client.get(url)
-            if r.status_code != 200:
-                return JSONResponse({"url": None, "zoom": settings.ui.commander_bg_zoom})
-
-            data = (r.json().get("data") or [])
-            if not data:
-                return JSONResponse({"url": None, "zoom": settings.ui.commander_bg_zoom})
-
-            newest = data[0]
-            img = _get_image_url(newest, "border_crop")
-            # Fallback, falls border_crop fehlt
-            if not img:
-                img = _get_image_url(newest, "large")
+            img = await _scryfall_query_preview_image(client, default_q)
+            if not img and fallback_q:
+                img = await _scryfall_query_preview_image(client, fallback_q)
             return JSONResponse({"url": img, "zoom": settings.ui.commander_bg_zoom})
 
     except Exception:

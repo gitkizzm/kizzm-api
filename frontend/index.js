@@ -424,7 +424,7 @@ async function ensureCardPreviewLoaded(){
     previewEl?.classList.toggle('is-swipe-swapped', chipPreviewFrontSlot === 2);
   }
 
-  async function animateChipPreviewFromAvatar(previewEl, avatarEl){
+  async function animateChipPreviewFromAvatar(previewEl, avatarEl, clickPoint){
     if(!previewEl || !avatarEl) return;
     const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     if(reduce) return;
@@ -434,8 +434,12 @@ async function ensureCardPreviewLoaded(){
     const endRect = previewEl.getBoundingClientRect();
     if(endRect.width <= 0 || endRect.height <= 0) return;
 
-    const startCx = startRect.left + (startRect.width / 2);
-    const startCy = startRect.top + (startRect.height / 2);
+    const clickX = Number(clickPoint?.x);
+    const clickY = Number(clickPoint?.y);
+    const hasClickPoint = Number.isFinite(clickX) && Number.isFinite(clickY);
+
+    const startCx = hasClickPoint ? clickX : startRect.left + (startRect.width / 2);
+    const startCy = hasClickPoint ? clickY : startRect.top + (startRect.height / 2);
     const endCx = endRect.left + (endRect.width / 2);
     const endCy = endRect.top + (endRect.height / 2);
 
@@ -545,7 +549,7 @@ async function ensureCardPreviewLoaded(){
     }
   }
 
-  async function showChipPreview(commander1, commander2, avatarEl){
+  async function showChipPreview(commander1, commander2, avatarEl, clickPoint){
     const c1 = String(commander1 || '').trim();
     const c2 = String(commander2 || '').trim();
     if(!c1) return;
@@ -577,7 +581,7 @@ async function ensureCardPreviewLoaded(){
 
     bindChipPreviewSwipe(c1, c2);
     setChipPreviewNames(c1, c2);
-    await animateChipPreviewFromAvatar(previewEl, avatarEl);
+    await animateChipPreviewFromAvatar(previewEl, avatarEl, clickPoint);
 
     await ensureCardPreviewLoaded();
     cardPreview.initCardPreview();
@@ -604,7 +608,11 @@ async function ensureCardPreviewLoaded(){
         const commander1 = String(chip.dataset?.commander || '').trim();
         const commander2 = String(chip.dataset?.commander2 || '').trim();
         if(!commander1) return;
-        showChipPreview(commander1, commander2, avatarEl).catch(() => {});
+        const clickPoint = {
+          x: typeof ev.clientX === 'number' ? ev.clientX : null,
+          y: typeof ev.clientY === 'number' ? ev.clientY : null,
+        };
+        showChipPreview(commander1, commander2, avatarEl, clickPoint).catch(() => {});
       });
     });
 
