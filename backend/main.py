@@ -2154,8 +2154,7 @@ async def background_commander(name: str = ""):
     safe = name.replace('"', '\\"')
     default_q_template = (
         settings.scryfall.card_preview_query_template
-        or settings.scryfall.commander_preview_query_template
-        or 'game:paper is:commander !"{name}"'
+        or 'game:paper is:commander is:normal !"{name}"'
     )
     fallback_q_template = settings.scryfall.card_preview_fallback_query_template or ""
 
