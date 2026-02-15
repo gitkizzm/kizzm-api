@@ -883,6 +883,39 @@ body.ccp-page .ccp-card{
   width:clamp(120px, 100%, 220px);
 }
 
+.pairing-placement-badge{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  width:24px;
+  min-width:24px;
+  height:24px;
+  border-radius:7px;
+  font-size:0.8rem;
+  font-weight:700;
+  line-height:1;
+}
+
+.pairing-placement-badge.place-1{
+  background:linear-gradient(135deg, #f8d77a, #c69a2e);
+  color:#5b410f;
+}
+
+.pairing-placement-badge.place-2{
+  background:linear-gradient(135deg, #c6ccd2, #8d959e);
+  color:#2e343c;
+}
+
+.pairing-placement-badge.place-3{
+  background:linear-gradient(135deg, #c4834a, #8f552a);
+  color:#f4d4b4;
+}
+
+.pairing-placement-badge.place-4{
+  background:linear-gradient(135deg, #50555d, #2f3338);
+  color:rgba(214, 221, 230, 0.75);
+}
+
 
 .report-player-chip--content-left .report-player-name{
   justify-content:flex-start;
@@ -902,6 +935,10 @@ body.ccp-page .ccp-card{
   order:1;
   justify-content:flex-end;
   text-align:right;
+}
+
+.report-player-chip--content-right .pairing-placement-badge{
+  order:0;
 }
 
 .report-player-avatar{
