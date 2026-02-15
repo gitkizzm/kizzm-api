@@ -892,13 +892,18 @@ body.ccp-page .ccp-card{
   display:flex;
   align-items:center;
   justify-content:center;
-  width:34px;
-  min-width:34px;
   height:100%;
+  width:auto;
+  min-width:0;
+  aspect-ratio:3 / 5;
   border-radius:0;
   font-size:0.8rem;
   font-weight:700;
   line-height:1;
+}
+
+.report-player-chip--content-left{
+  padding:1px;
 }
 
 .pairing-placement-badge.place-1{
@@ -929,7 +934,7 @@ body.ccp-page .ccp-card{
 
 .report-player-chip--content-right{
   justify-content:flex-end;
-  padding:1px 1px 1px 3px;
+  padding:1px;
 }
 
 .report-player-chip--content-right .report-player-avatar{

@@ -1602,8 +1602,8 @@ async function ensureCardPreviewLoaded(){
 
     initReportModal();
     initBestDeckVoting();
-    await hydratePairingMatchupChips();
     await loadChipPreviewSettings();
+    await hydratePairingMatchupChips();
     bindChipPreviewEvents();
 
     document.addEventListener('keydown', (ev) => {
