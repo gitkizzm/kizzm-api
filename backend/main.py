@@ -823,6 +823,7 @@ def _debug_detect_phase(start_file_exists: bool, raffle_list: list[dict], pair_s
       - confirm_needed
       - pairings_start_needed
       - next_round_or_end_needed
+      - start_voting_needed
       - voting_needed
       - idle
     """
@@ -843,6 +844,8 @@ def _debug_detect_phase(start_file_exists: bool, raffle_list: list[dict], pair_s
     phase = (pair_state.get("phase") or "").strip().lower()
     if phase == "playing":
         return "next_round_or_end_needed"
+    if phase == "pre_voting":
+        return "start_voting_needed"
     if phase == "voting":
         return "voting_needed"
 
@@ -1385,6 +1388,25 @@ async def _debug_apply_step() -> dict:
             result = _debug_next_round_or_end_in_memory(raffle_list, st)
             result["phase"] = phase
             return result
+
+        # -------------------------
+        # Phase 5: Start voting from pre-voting overview
+        # -------------------------
+        if phase == "start_voting_needed":
+            st = _load_pairings() or {}
+            st["phase"] = "voting"
+            _atomic_write_pairings(st)
+
+            for e in raffle_list:
+                if e.get("deck_id") is not None:
+                    e["pairing_phase"] = "voting"
+            _atomic_write_json(FILE_PATH, raffle_list)
+
+            return {
+                "ok": True,
+                "phase": phase,
+                "action": "started_voting_phase",
+            }
 
         # -------------------------
         # Phase 5: Complete voting + publish results

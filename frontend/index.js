@@ -54,6 +54,14 @@ async function ensureCardPreviewLoaded(){
 
   let reportState = null;
   let bestDeckVotingState = null;
+
+  function setBestDeckVotingSectionTitle(title){
+    if(!bestDeckVotingTitleEl) return;
+    const text = String(title || '').trim();
+    bestDeckVotingTitleEl.textContent = text;
+    bestDeckVotingTitleEl.style.display = text ? 'block' : 'none';
+  }
+
   let chipPreviewUi = {
     modalStyle: false,
     revealAnimation: false,
@@ -1027,14 +1035,13 @@ async function ensureCardPreviewLoaded(){
       `).join('');
       votingResultsEl.innerHTML = `
         <div class="status" style="margin-top:10px;">
-          <strong>Vorabauswertung Spielphase</strong>
           <div style="overflow:auto; margin-top:8px;">
             <table style="width:100%; border-collapse: collapse; font-size: 0.95em;">
               <thead>
                 <tr>
                   <th style="text-align:left; padding:4px;">Platz</th>
                   <th style="text-align:left; padding:4px;">Spieler</th>
-                  <th style="text-align:right; padding:4px;">Spielphase-Punkte</th>
+                  <th style="text-align:right; padding:4px;">Punkte</th>
                 </tr>
               </thead>
               <tbody>${body}</tbody>
@@ -1355,11 +1362,10 @@ async function ensureCardPreviewLoaded(){
       results: data.results || null,
     };
 
-    if(bestDeckVotingTitleEl){
-      bestDeckVotingTitleEl.textContent = data.phase_title || 'Best-Deck-Voting';
-    }
-
     const votingKindRaw = String(data.voting_kind || '').trim();
+    const hideSectionTitle = votingKindRaw === 'pre_voting_overview' || votingKindRaw === 'waiting_results';
+    setBestDeckVotingSectionTitle(hideSectionTitle ? '' : (data.phase_title || 'Best-Deck-Voting'));
+
     const isPublished = votingKindRaw === 'results_published';
     const isPreVotingOverview = votingKindRaw === 'pre_voting_overview';
     setVotingHint((isPublished || isPreVotingOverview) ? '' : (data.status_message || ''));
