@@ -375,6 +375,16 @@ async def get_form(
         except (json.JSONDecodeError, ValueError):
             pass
 
+    should_redirect_to_deck_url = bool(
+        deck_id > 0
+        and existing_entry
+        and _published_voting_results(pairings)
+        and _deck_url_redirect_enabled(pairings)
+        and str(existing_entry.get("deckUrl") or "").strip()
+    )
+    if should_redirect_to_deck_url:
+        return RedirectResponse(url=str(existing_entry.get("deckUrl")).strip(), status_code=303)
+
     glasscard_title = "Deckregistrierung"
     if start_file_exists:
         glasscard_title = "Deckverteilung"
@@ -1540,6 +1550,7 @@ async def customer_control_panel(request: Request):
     published_results = _published_voting_results(pair) if isinstance(pair, dict) else None
     voting_results_published = bool(published_results)
     voting_results_rows = (published_results or {}).get("rows") or []
+    deck_url_redirect_enabled = _deck_url_redirect_enabled(pair)
 
     active_round_status = _round_report_status(pair, active_round) if pairings_phase == "playing" and active_round > 0 else {
         "table_count": 0,
@@ -1734,6 +1745,7 @@ async def customer_control_panel(request: Request):
             "voting_total_count": voting_total_count,
             "voting_results_published": voting_results_published,
             "voting_results_rows": voting_results_rows,
+            "deck_url_redirect_enabled": deck_url_redirect_enabled,
             "all_confirmed": all_confirmed,
             "pairings_started": pairings_started,
             "pairings_phase": pairings_phase,
@@ -2212,6 +2224,12 @@ def _published_voting_results(state: dict | None) -> dict | None:
         return None
     data = bucket.get("data")
     return data if isinstance(data, dict) else None
+
+
+def _deck_url_redirect_enabled(state: dict | None) -> bool:
+    if not isinstance(state, dict):
+        return False
+    return bool(state.get("deck_url_redirect_enabled"))
 
 
 def _configured_point_map(bucket: dict | None, key: str, defaults: dict[int, int]) -> dict[int, int]:
@@ -3129,6 +3147,23 @@ async def publish_voting_results():
         bucket["published"] = True
         bucket["published_at"] = datetime.now(timezone.utc).isoformat()
         bucket["data"] = results
+        _atomic_write_pairings(state)
+
+    await notify_state_change()
+    return RedirectResponse(url="/CCP", status_code=303)
+
+
+@app.post("/toggleDeckUrlRedirect")
+async def toggle_deck_url_redirect():
+    async with RAFFLE_LOCK:
+        state = _load_pairings() or {}
+        if not state:
+            raise HTTPException(status_code=400, detail="Pairings wurden noch nicht gestartet.")
+
+        if not _published_voting_results(state):
+            raise HTTPException(status_code=400, detail="Deck-URL-Redirect ist erst nach veröffentlichten Ergebnissen verfügbar.")
+
+        state["deck_url_redirect_enabled"] = not _deck_url_redirect_enabled(state)
         _atomic_write_pairings(state)
 
     await notify_state_change()

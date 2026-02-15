@@ -129,6 +129,27 @@
                 {% endif %}
             </div>
 
+            {% if voting_results_published %}
+                <form action="/toggleDeckUrlRedirect" method="post" style="margin-top: 12px;">
+                    <div class="btn-row" style="justify-content:flex-start;">
+                        <button type="submit">
+                            {% if deck_url_redirect_enabled %}
+                                Deck-URL-Weiterleitung deaktivieren
+                            {% else %}
+                                Deck-URL-Weiterleitung aktivieren
+                            {% endif %}
+                        </button>
+                    </div>
+                    <div class="status" style="margin-top: 8px; font-size: 0.95em;">
+                        {% if deck_url_redirect_enabled %}
+                            Aktiv: Bei /?deck_id=... wird auf die gespeicherte Deck-URL umgeleitet (falls vorhanden).
+                        {% else %}
+                            Inaktiv: Bei /?deck_id=... wird weiterhin das Endergebnis angezeigt.
+                        {% endif %}
+                    </div>
+                </form>
+            {% endif %}
+
             {% if primary_action.kind == "start_pairings" and start_file_exists and all_confirmed %}
                 <form id="primaryActionForm" action="/startPairings" method="post" class="row" style="gap:10px; margin-top:14px;">
                     <label for="numPods">Anzahl Pods / Tische:</label>
